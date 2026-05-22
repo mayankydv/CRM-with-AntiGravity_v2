@@ -458,6 +458,32 @@ body {
   margin-bottom: 20px;
 }
 
+.view-title-bar.has-back {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.view-back-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: var(--primary-glow);
+  color: var(--primary);
+  text-decoration: none;
+  transition: var(--transition);
+  flex-shrink: 0;
+}
+
+.view-back-btn:hover {
+  background: var(--primary);
+  color: #ffffff;
+  transform: translateX(-3px);
+}
+
 .view-title {
   font-size: 1.5rem;
   font-weight: 700;
