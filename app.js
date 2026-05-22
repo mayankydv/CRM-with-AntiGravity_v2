@@ -141,6 +141,7 @@ let currentUser = null;
 let currentPinInput = "";
 let selectedLead = null;
 let photoPreviewBase64 = null;
+let activeReportsTimeframe = "all";
 
 // --- ROUTING ---
 const routes = {
@@ -153,7 +154,10 @@ const routes = {
 };
 
 function handleRouting() {
-  const hash = window.location.hash || "#/login";
+  const fullHash = window.location.hash || "#/login";
+  const [hash, queryString] = fullHash.split("?");
+  const params = new URLSearchParams(queryString || "");
+  const activeSheet = params.get("sheet");
   
   // Verify Session
   checkSession();
@@ -193,6 +197,92 @@ function handleRouting() {
 
   // Load view contents
   initView(hash);
+
+  // Manage all sheets (modals) based on activeSheet parameter
+  manageSheetsRouting(activeSheet, params);
+}
+
+// --- SHEET (MODAL) STATE ROUTING HELPERS ---
+function showSheet(id, extraParams = {}) {
+  const currentViewHash = window.location.hash.split("?")[0] || "#/dashboard";
+  const searchParams = new URLSearchParams();
+  searchParams.set("sheet", id);
+  for (const [k, v] of Object.entries(extraParams)) {
+    searchParams.set(k, v);
+  }
+  window.location.hash = `${currentViewHash}?${searchParams.toString()}`;
+}
+
+function closeSheet(id) {
+  const currentViewHash = window.location.hash.split("?")[0] || "#/dashboard";
+  window.location.hash = currentViewHash;
+}
+
+function manageSheetsRouting(activeSheet, params) {
+  const sheets = ["leadFormSheet", "meetingFormSheet", "leadDetailSheet", "meetingDetailSheet", "fabSheet"];
+  
+  sheets.forEach(sheetId => {
+    const el = document.getElementById(sheetId);
+    if (!el) return;
+    
+    if (activeSheet === sheetId) {
+      if (sheetId === "fabSheet") {
+        el.classList.add("show");
+      } else {
+        el.style.display = "flex";
+      }
+    } else {
+      if (sheetId === "fabSheet") {
+        el.classList.remove("show");
+      } else {
+        el.style.display = "none";
+      }
+    }
+  });
+
+  // Populate data for the active sheet if needed
+  if (activeSheet === "leadFormSheet") {
+    const leadId = params.get("id");
+    if (leadId) {
+      const lead = db.getLeads().find(l => l.leadId === leadId);
+      if (lead) {
+        selectedLead = lead;
+        populateLeadFormForEdit(lead);
+      }
+    } else {
+      selectedLead = null;
+      populateLeadFormForAdd();
+    }
+  } else if (activeSheet === "meetingFormSheet") {
+    const leadId = params.get("leadId");
+    populateMeetingForm(leadId);
+  } else if (activeSheet === "leadDetailSheet") {
+    const leadId = params.get("id");
+    renderLeadDetail(leadId);
+  } else if (activeSheet === "meetingDetailSheet") {
+    const meetingId = params.get("id");
+    renderMeetingDetail(meetingId);
+  }
+}
+
+// --- DASHBOARD INTERACTIVE NAVIGATION HELPERS ---
+function navigateToTotalLeads() {
+  activeStatusFilter = "All";
+  window.location.hash = "#/leads";
+}
+
+function navigateToMeetings() {
+  window.location.hash = "#/meetings";
+}
+
+function navigateToActivePipelines() {
+  activeStatusFilter = "Active";
+  window.location.hash = "#/leads";
+}
+
+function navigateToDueFollowups() {
+  activeStatusFilter = "Due";
+  window.location.hash = "#/leads";
 }
 
 function checkSession() {
@@ -532,7 +622,12 @@ function renderLeadsList() {
       const matchSearch = lead.organisation.toLowerCase().includes(searchVal) || 
                           lead.poc1.toLowerCase().includes(searchVal) ||
                           lead.owner.toLowerCase().includes(searchVal);
-      const matchStatus = activeStatusFilter === "All" || lead.status === activeStatusFilter;
+      const d = new Date();
+      const todayStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      const matchStatus = activeStatusFilter === "All" || 
+                          (activeStatusFilter === "Active" && lead.status !== "Converted" && lead.status !== "Lost") ||
+                          (activeStatusFilter === "Due" && lead.followup && lead.followup <= todayStr && lead.status !== "Converted" && lead.status !== "Lost") ||
+                          lead.status === activeStatusFilter;
       return matchSearch && matchStatus;
     });
 
@@ -581,7 +676,7 @@ function renderLeadFilterChips(leads) {
   const container = document.getElementById("leadFilterChips");
   container.innerHTML = "";
 
-  const statuses = ["All", ...db.getConfig().leadStatuses];
+  const statuses = ["All", "Active", "Due", ...db.getConfig().leadStatuses];
   
   statuses.forEach(status => {
     const chip = document.createElement("div");
@@ -665,6 +760,14 @@ function renderMeetingsList() {
 
 // --- FORM ENGINE (DYNAMIC RENDERING) ---
 function openAddLeadSheet() {
+  showSheet("leadFormSheet");
+}
+
+function openAddMeetingSheet() {
+  showSheet("meetingFormSheet");
+}
+
+function populateLeadFormForAdd() {
   selectedLead = null;
   document.getElementById("leadSheetTitle").innerText = "Add New Lead";
   document.getElementById("leadFormSubmitBtn").innerText = "Save Lead";
@@ -687,12 +790,56 @@ function openAddLeadSheet() {
 
   // Render custom fields
   renderDynamicCustomFields("leadCustomFieldsContainer", "lead");
-
-  // Show bottom sheet
-  document.getElementById("leadFormSheet").style.display = "flex";
 }
 
-function openAddMeetingSheet() {
+function populateLeadFormForEdit(lead) {
+  if (!lead) return;
+  document.getElementById("leadSheetTitle").innerText = "Edit Lead Details";
+  document.getElementById("leadFormSubmitBtn").innerText = "Update Lead";
+  
+  // Reps/Managers can archive/delete if authorized
+  if (currentUser.role === "Admin" || currentUser.role === "Manager") {
+    document.getElementById("leadDeleteBtn").style.display = "block";
+  } else {
+    document.getElementById("leadDeleteBtn").style.display = "none";
+  }
+
+  document.getElementById("leadOrg").value = lead.organisation;
+  document.getElementById("leadPoc1").value = lead.poc1;
+  document.getElementById("leadPoc2").value = lead.poc2 || "";
+  document.getElementById("leadRevenue").value = lead.revenuePotential;
+  document.getElementById("leadFollowup").value = lead.followup || "";
+
+  populateDropdown("leadAudience", db.getConfig().audienceTypes);
+  document.getElementById("leadAudience").value = lead.audienceType;
+
+  populateDropdown("leadStatus", db.getConfig().leadStatuses);
+  document.getElementById("leadStatus").value = lead.status;
+
+  populateDropdown("leadLostReason", db.getConfig().nonConversionReasons, true);
+  
+  toggleLostReasonsBox();
+  if (lead.status === "Lost") {
+    document.getElementById("leadLostReason").value = lead.nonConversionReason || "";
+    document.getElementById("leadLostAction").value = lead.nonConversionAction || "";
+  }
+
+  // Set custom fields values
+  renderDynamicCustomFields("leadCustomFieldsContainer", "lead");
+  const registeredFields = db.getFormFields().filter(f => f.target === "lead" && f.active);
+  registeredFields.forEach(f => {
+    const input = document.getElementById(`custom_${f.id}`);
+    if (input) {
+      if (f.type === "checkbox") {
+        input.checked = lead.customFields?.[f.id] || false;
+      } else {
+        input.value = lead.customFields?.[f.id] || "";
+      }
+    }
+  });
+}
+
+function populateMeetingForm(preselectedLeadId = null) {
   document.getElementById("meetingSheetTitle").innerText = "Log Client Meeting";
   
   // Populate Leads Dropdown
@@ -703,6 +850,9 @@ function openAddMeetingSheet() {
     const opt = document.createElement("option");
     opt.value = l.leadId;
     opt.innerText = l.organisation;
+    if (preselectedLeadId && l.leadId === preselectedLeadId) {
+      opt.selected = true;
+    }
     leadsDropdown.appendChild(opt);
   });
 
@@ -725,8 +875,6 @@ function openAddMeetingSheet() {
 
   // Dynamic custom fields
   renderDynamicCustomFields("meetingCustomFieldsContainer", "meeting");
-
-  document.getElementById("meetingFormSheet").style.display = "flex";
 }
 
 function populateDropdown(elId, list, addEmpty = false) {
@@ -961,6 +1109,10 @@ function triggerPhotoCapture() {
 
 // --- DETAILS VIEWS ---
 function showLeadDetail(id) {
+  showSheet("leadDetailSheet", { id });
+}
+
+function renderLeadDetail(id) {
   const lead = db.getLeads().find(l => l.leadId === id);
   if (!lead) return;
 
@@ -1023,62 +1175,11 @@ function showLeadDetail(id) {
   } else {
     editBtn.style.display = "block";
   }
-
-  document.getElementById("leadDetailSheet").style.display = "flex";
 }
 
 function editSelectedLead() {
   if (!selectedLead) return;
-  
-  // Close detail sheet
-  closeSheet("leadDetailSheet");
-
-  // Open Form Sheet & Load values
-  document.getElementById("leadSheetTitle").innerText = "Edit Lead Details";
-  document.getElementById("leadFormSubmitBtn").innerText = "Update Lead";
-  
-  // Reps/Managers can archive/delete if authorized
-  if (currentUser.role === "Admin" || currentUser.role === "Manager") {
-    document.getElementById("leadDeleteBtn").style.display = "block";
-  } else {
-    document.getElementById("leadDeleteBtn").style.display = "none";
-  }
-
-  document.getElementById("leadOrg").value = selectedLead.organisation;
-  document.getElementById("leadPoc1").value = selectedLead.poc1;
-  document.getElementById("leadPoc2").value = selectedLead.poc2 || "";
-  document.getElementById("leadRevenue").value = selectedLead.revenuePotential;
-  document.getElementById("leadFollowup").value = selectedLead.followup || "";
-
-  populateDropdown("leadAudience", db.getConfig().audienceTypes);
-  document.getElementById("leadAudience").value = selectedLead.audienceType;
-
-  populateDropdown("leadStatus", db.getConfig().leadStatuses);
-  document.getElementById("leadStatus").value = selectedLead.status;
-
-  populateDropdown("leadLostReason", db.getConfig().nonConversionReasons, true);
-  
-  toggleLostReasonsBox();
-  if (selectedLead.status === "Lost") {
-    document.getElementById("leadLostReason").value = selectedLead.nonConversionReason || "";
-    document.getElementById("leadLostAction").value = selectedLead.nonConversionAction || "";
-  }
-
-  // Set custom fields values
-  renderDynamicCustomFields("leadCustomFieldsContainer", "lead");
-  const registeredFields = db.getFormFields().filter(f => f.target === "lead" && f.active);
-  registeredFields.forEach(f => {
-    const input = document.getElementById(`custom_${f.id}`);
-    if (input) {
-      if (f.type === "checkbox") {
-        input.checked = selectedLead.customFields?.[f.id] || false;
-      } else {
-        input.value = selectedLead.customFields?.[f.id] || "";
-      }
-    }
-  });
-
-  document.getElementById("leadFormSheet").style.display = "flex";
+  showSheet("leadFormSheet", { id: selectedLead.leadId });
 }
 
 function archiveSelectedLead() {
@@ -1098,6 +1199,10 @@ function archiveSelectedLead() {
 }
 
 function showMeetingDetail(id) {
+  showSheet("meetingDetailSheet", { id });
+}
+
+function renderMeetingDetail(id) {
   const meeting = db.getMeetings().find(m => m.meetingId === id);
   if (!meeting) return;
 
@@ -1119,45 +1224,273 @@ function showMeetingDetail(id) {
   } else {
     photoContainer.innerHTML = `<span style="font-size:0.8rem; color:var(--text-muted); font-style:italic;">No photo proof attached</span>`;
   }
-
-  document.getElementById("meetingDetailSheet").style.display = "flex";
-}
-
-function closeSheet(id) {
-  document.getElementById(id).style.display = "none";
 }
 
 // --- ANALYTICS REPORTS ---
+function shareLeadAsImage() {
+  if (!selectedLead) {
+    showToast("No lead selected to share", "error");
+    return;
+  }
+
+  // Create canvas
+  const canvas = document.createElement("canvas");
+  canvas.width = 800;
+  canvas.height = 500;
+  const ctx = canvas.getContext("2d");
+
+  // 1. Draw premium background gradient
+  const bgGrad = ctx.createLinearGradient(0, 0, 800, 500);
+  bgGrad.addColorStop(0, "#0b2530"); // Dark primary color
+  bgGrad.addColorStop(1, "#111827"); // Deep slate
+  ctx.fillStyle = bgGrad;
+  ctx.fillRect(0, 0, 800, 500);
+
+  // 2. Add accent glowing lines or shapes
+  const accentGrad = ctx.createLinearGradient(0, 0, 800, 0);
+  accentGrad.addColorStop(0, "#10b981"); // Success green
+  accentGrad.addColorStop(0.5, "#1b7a9c"); // Primary light
+  accentGrad.addColorStop(1, "#8b5cf6"); // Info purple
+  ctx.fillStyle = accentGrad;
+  ctx.fillRect(0, 0, 800, 8); // Top thick glowing border
+
+  // Draw logo placeholder/branding
+  ctx.fillStyle = "#ffffff";
+  ctx.font = "bold 20px sans-serif";
+  ctx.fillText("RATLAM HOSPITAL", 50, 48);
+
+  ctx.fillStyle = "#8b5cf6";
+  ctx.font = "600 12px sans-serif";
+  ctx.fillText("REFERRAL PARTNER NETWORK", 50, 68);
+
+  // Draw horizontal separator
+  ctx.strokeStyle = "rgba(255, 255, 255, 0.1)";
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(50, 85);
+  ctx.lineTo(750, 85);
+  ctx.stroke();
+
+  // 3. Organization Name
+  ctx.fillStyle = "#ffffff";
+  ctx.font = "bold 32px sans-serif";
+  ctx.fillText(selectedLead.organisation, 50, 135);
+
+  // Status Badge Pill
+  const status = selectedLead.status;
+  let badgeColor = "#64748b"; // muted
+  let badgeBg = "rgba(100, 116, 139, 0.2)";
+  if (status === "Converted") {
+    badgeColor = "#10b981";
+    badgeBg = "rgba(16, 185, 129, 0.2)";
+  } else if (status === "Referral Started" || status === "Qualified") {
+    badgeColor = "#f59e0b";
+    badgeBg = "rgba(245, 158, 11, 0.2)";
+  } else if (status === "Lost") {
+    badgeColor = "#ef4444";
+    badgeBg = "rgba(239, 68, 68, 0.2)";
+  }
+  
+  // Draw Status Badge background
+  ctx.fillStyle = badgeBg;
+  const statusWidth = ctx.measureText(status).width + 24;
+  if (ctx.roundRect) {
+    ctx.beginPath();
+    ctx.roundRect(50, 160, statusWidth, 30, 15);
+    ctx.fill();
+  } else {
+    ctx.fillRect(50, 160, statusWidth, 30);
+  }
+  
+  // Draw Status Badge text
+  ctx.fillStyle = badgeColor;
+  ctx.font = "bold 13px sans-serif";
+  ctx.fillText(status, 62, 180);
+
+  // 4. Draw lead details
+  ctx.fillStyle = "rgba(255, 255, 255, 0.6)";
+  ctx.font = "500 14px sans-serif";
+  ctx.fillText("PRIMARY CONTACT (POC)", 50, 240);
+  ctx.fillStyle = "#ffffff";
+  ctx.font = "600 18px sans-serif";
+  ctx.fillText(selectedLead.poc1 || "-", 50, 265);
+
+  ctx.fillStyle = "rgba(255, 255, 255, 0.6)";
+  ctx.font = "500 14px sans-serif";
+  ctx.fillText("REP AGENT OWNER", 50, 315);
+  ctx.fillStyle = "#ffffff";
+  ctx.font = "600 18px sans-serif";
+  ctx.fillText(selectedLead.owner || "-", 50, 340);
+
+  ctx.fillStyle = "rgba(255, 255, 255, 0.6)";
+  ctx.font = "500 14px sans-serif";
+  ctx.fillText("ESTIMATED MONTHLY REFERRALS", 50, 390);
+  ctx.fillStyle = "#10b981";
+  ctx.font = "bold 24px sans-serif";
+  ctx.fillText(`₹${(selectedLead.revenuePotential || 0).toLocaleString()}`, 50, 420);
+
+  // 5. Draw right-side summary card
+  ctx.fillStyle = "rgba(255, 255, 255, 0.05)";
+  ctx.strokeStyle = "rgba(255, 255, 255, 0.1)";
+  ctx.lineWidth = 1;
+  if (ctx.roundRect) {
+    ctx.beginPath();
+    ctx.roundRect(460, 115, 290, 305, 16);
+    ctx.fill();
+    ctx.stroke();
+  } else {
+    ctx.fillRect(460, 115, 290, 305);
+    ctx.strokeRect(460, 115, 290, 305);
+  }
+
+  // Content for the right-side summary card
+  ctx.fillStyle = "#ffffff";
+  ctx.font = "bold 16px sans-serif";
+  ctx.fillText("Lead Metadata", 485, 150);
+
+  ctx.fillStyle = "rgba(255, 255, 255, 0.5)";
+  ctx.font = "500 12px sans-serif";
+  ctx.fillText("Establishment ID:", 485, 185);
+  ctx.fillStyle = "#ffffff";
+  ctx.font = "600 13px sans-serif";
+  ctx.fillText(selectedLead.leadId || "-", 485, 205);
+
+  ctx.fillStyle = "rgba(255, 255, 255, 0.5)";
+  ctx.font = "500 12px sans-serif";
+  ctx.fillText("Audience Type:", 485, 235);
+  ctx.fillStyle = "#ffffff";
+  ctx.font = "600 13px sans-serif";
+  ctx.fillText(selectedLead.audienceType || "-", 485, 255);
+
+  ctx.fillStyle = "rgba(255, 255, 255, 0.5)";
+  ctx.font = "500 12px sans-serif";
+  ctx.fillText("Next Followup:", 485, 285);
+  ctx.fillStyle = "#f59e0b";
+  ctx.font = "600 13px sans-serif";
+  ctx.fillText(selectedLead.followup || "None Scheduled", 485, 305);
+
+  ctx.fillStyle = "rgba(255, 255, 255, 0.5)";
+  ctx.font = "500 12px sans-serif";
+  ctx.fillText("Speciality:", 485, 335);
+  ctx.fillStyle = "#ffffff";
+  ctx.font = "600 13px sans-serif";
+  ctx.fillText(selectedLead.customFields?.speciality || "-", 485, 355);
+
+  // Footer branding
+  ctx.fillStyle = "rgba(255, 255, 255, 0.3)";
+  ctx.font = "500 11px sans-serif";
+  const now = new Date();
+  ctx.fillText(`Generated on ${now.toLocaleString()}`, 50, 470);
+  ctx.fillText("Confidential CRM Record", 610, 470);
+
+  // Perform sharing or fallback
+  canvas.toBlob(blob => {
+    const file = new File([blob], `${selectedLead.organisation.replace(/\s+/g, '_')}_lead_card.png`, { type: "image/png" });
+    
+    // Check if navigator.share supports file sharing
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      navigator.share({
+        files: [file],
+        title: `${selectedLead.organisation} CRM Card`,
+        text: `Check out the details for referral lead: ${selectedLead.organisation}`
+      }).catch(err => {
+        console.warn("Share failed, falling back to download", err);
+        triggerDownload(canvas);
+      });
+    } else {
+      triggerDownload(canvas);
+    }
+  }, "image/png");
+}
+
+function triggerDownload(canvas) {
+  const link = document.createElement("a");
+  link.download = `${selectedLead.organisation.replace(/\s+/g, '_')}_lead_card.png`;
+  link.href = canvas.toDataURL("image/png");
+  link.click();
+  showToast("Lead card image downloaded!", "success");
+}
+
+function logMeetingForLeadShortcut() {
+  if (!selectedLead) return;
+  const leadId = selectedLead.leadId;
+  showSheet("meetingFormSheet", { leadId });
+}
+
+function matchTimeframe(dateStr) {
+  if (!dateStr) return false;
+  const itemDate = dateStr.split("T")[0];
+  const d = new Date();
+  const todayStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  
+  if (activeReportsTimeframe === "today") {
+    return itemDate === todayStr;
+  } else if (activeReportsTimeframe === "yesterday") {
+    const y = new Date();
+    y.setDate(y.getDate() - 1);
+    const yesterdayStr = `${y.getFullYear()}-${String(y.getMonth() + 1).padStart(2, '0')}-${String(y.getDate()).padStart(2, '0')}`;
+    return itemDate === yesterdayStr;
+  }
+  return true; // "all"
+}
+
+function setReportsTimeframe(timeframe) {
+  activeReportsTimeframe = timeframe;
+  document.querySelectorAll(".reports-filter-btn").forEach(btn => {
+    if (btn.getAttribute("data-timeframe") === timeframe) {
+      btn.classList.add("active");
+    } else {
+      btn.classList.remove("active");
+    }
+  });
+  renderReports();
+}
+
 function renderReports() {
   const leads = db.getLeads();
   const meetings = db.getMeetings();
+
+  // Filter leads and meetings by timeframe
+  const filteredLeads = leads.filter(l => matchTimeframe(l.createdAt) || matchTimeframe(l.updatedAt));
 
   // 1. Hospital Referral Conversion table
   const tbody = document.getElementById("reportsConversionTable");
   tbody.innerHTML = "";
 
-  leads.forEach(lead => {
-    const count = meetings.filter(m => m.leadId === lead.leadId).length;
-    const tr = document.createElement("tr");
-    tr.innerHTML = `
-      <td style="font-weight:600; color:var(--primary);">${lead.organisation}</td>
-      <td>${lead.audienceType}</td>
-      <td>${lead.owner}</td>
-      <td><span class="record-badge badge-${lead.status.toLowerCase().replace(" ", "-")}">${lead.status}</span></td>
-      <td style="text-align:center;">${count}</td>
-      <td style="text-align:right; font-weight:600;">₹${lead.revenuePotential.toLocaleString()}</td>
-    `;
-    tbody.appendChild(tr);
-  });
+  if (filteredLeads.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; color:var(--text-muted); padding:16px;">No activity in this timeframe</td></tr>`;
+  } else {
+    filteredLeads.forEach(lead => {
+      const count = meetings.filter(m => m.leadId === lead.leadId).length;
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td style="font-weight:600; color:var(--primary);">${lead.organisation}</td>
+        <td>${lead.audienceType}</td>
+        <td>${lead.owner}</td>
+        <td><span class="record-badge badge-${lead.status.toLowerCase().replace(" ", "-")}">${lead.status}</span></td>
+        <td style="text-align:center;">${count}</td>
+        <td style="text-align:right; font-weight:600;">₹${lead.revenuePotential.toLocaleString()}</td>
+      `;
+      tbody.appendChild(tr);
+    });
+  }
 
   // 2. Aggregate statistics calculations
-  const totalConversions = leads.filter(l => l.status === "Converted").length;
-  const lostOpportunities = leads.filter(l => l.status === "Lost").length;
-  const referralGrowthValue = leads.filter(l => l.status === "Converted").reduce((acc, l) => acc + l.revenuePotential, 0);
+  const newLeadsCount = leads.filter(l => matchTimeframe(l.createdAt)).length;
+  const meetingsCount = meetings.filter(m => matchTimeframe(m.createdAt)).length;
+  const referralsAddedCount = leads.filter(l => 
+    (l.status === "Referral Started" || l.status === "Converted") && 
+    (matchTimeframe(l.createdAt) || matchTimeframe(l.updatedAt))
+  ).length;
+  const acquiredValue = leads.filter(l => 
+    l.status === "Converted" && 
+    (matchTimeframe(l.createdAt) || matchTimeframe(l.updatedAt))
+  ).reduce((acc, l) => acc + (l.revenuePotential || 0), 0);
 
-  document.getElementById("repTotalConversions").innerText = totalConversions;
-  document.getElementById("repTotalLost").innerText = lostOpportunities;
-  document.getElementById("repTotalReferralsGrowth").innerText = `₹${referralGrowthValue.toLocaleString()}`;
+  document.getElementById("repTotalNewLeads").innerText = newLeadsCount;
+  document.getElementById("repTotalMeetings").innerText = meetingsCount;
+  document.getElementById("repTotalReferrals").innerText = referralsAddedCount;
+  document.getElementById("repTotalValue").innerText = `₹${acquiredValue.toLocaleString()}`;
 }
 
 // --- ADMIN PANEL AND DYNAMIC FORMS CONFIG ---
@@ -1517,7 +1850,11 @@ function showToast(msg, type = "success") {
 // FAB Sheet Toggle
 function toggleFabMenu() {
   const sheet = document.getElementById("fabSheet");
-  sheet.classList.toggle("show");
+  if (sheet.classList.contains("show")) {
+    closeSheet("fabSheet");
+  } else {
+    showSheet("fabSheet");
+  }
 }
 
 function handleFabItemClick(action) {

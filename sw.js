@@ -1,5 +1,5 @@
-// MedTrack CRM - Service Worker for Offline-First Support (sw.js)
-const CACHE_NAME = "medtrack-cache-v1";
+// Ratlam Hospital CRM - Service Worker for Offline-First Support (sw.js)
+const CACHE_NAME = "ratlam-cache-v1";
 const ASSETS = [
   "index.html",
   "styles.css",
@@ -11,7 +11,10 @@ const ASSETS = [
   "addmeeting.html",
   "meetings.html",
   "reports.html",
-  "admin.html"
+  "admin.html",
+  "icon-192.png",
+  "icon-512.png",
+  "icon.svg"
 ];
 
 // Install Event - Pre-cache Static Shell
