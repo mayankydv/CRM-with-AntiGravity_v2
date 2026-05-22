@@ -1,0 +1,313 @@
+/**
+ * MedTrack CRM - Google Apps Script Backend (Code.gs)
+ * Paste this script in the Apps Script Editor attached to your Google Sheet.
+ * Deploy as a Web App: Execute as "Me", Access: "Anyone".
+ */
+
+// Global Sheet Configuration
+const SHEET_SCHEMAS = {
+  Users: ["Name", "PIN", "Role", "Active"],
+  Leads: ["LeadID", "Organisation", "POC1", "POC2", "AudienceType", "Owner", "Status", "Followup", "RevenuePotential", "NonConversionReason", "NonConversionAction", "CreatedAt", "UpdatedAt", "Archived", "CustomFields"],
+  Meetings: ["MeetingID", "LeadID", "Purpose", "Notes", "Outcome", "Owner", "GPS", "Date", "Followup", "CreatedAt", "Archived", "Photo", "CustomFields"],
+  Config: ["ConfigKey", "ConfigValue"],
+  FormFields: ["ID", "Label", "Type", "Mandatory", "Options", "Active", "Target"]
+};
+
+/**
+ * Serves GET Requests: Reading Data
+ */
+function doGet(e) {
+  try {
+    const action = e.parameter.action;
+    initializeSpreadsheet(); // Ensure sheets and headers exist
+    
+    if (action === "getData") {
+      const data = fetchAllTables();
+      return jsonResponse({ success: true, ...data });
+    }
+    
+    return jsonResponse({ success: true, message: "MedTrack GAS Sync Server Running. Use POST to sync." });
+  } catch (error) {
+    return jsonResponse({ success: false, error: error.toString() });
+  }
+}
+
+/**
+ * Serves POST Requests: Writing and Syncing Data
+ */
+function doPost(e) {
+  try {
+    initializeSpreadsheet();
+    
+    const payload = JSON.parse(e.postData.contents);
+    
+    // Sync each table from payload
+    if (payload.users) syncUsers(payload.users);
+    if (payload.config) syncConfig(payload.config);
+    if (payload.formFields) syncFormFields(payload.formFields);
+    if (payload.leads) syncLeads(payload.leads);
+    if (payload.meetings) syncMeetings(payload.meetings);
+    
+    // Fetch fresh merged state to send back to client
+    const freshData = fetchAllTables();
+    
+    return jsonResponse({ success: true, ...freshData });
+  } catch (error) {
+    return jsonResponse({ success: false, error: error.toString() });
+  }
+}
+
+/**
+ * Returns JSON formatted output with CORS headers
+ */
+function jsonResponse(obj) {
+  return ContentService.createTextOutput(JSON.stringify(obj))
+    .setMimeType(ContentService.MimeType.JSON)
+    .setHeader("Access-Control-Allow-Origin", "*")
+    .setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+    .setHeader("Access-Control-Allow-Headers", "Content-Type");
+}
+
+/**
+ * Creates sheets and headers if they do not exist
+ */
+function initializeSpreadsheet() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  
+  Object.keys(SHEET_SCHEMAS).forEach(sheetName => {
+    let sheet = ss.getSheetByName(sheetName);
+    if (!sheet) {
+      sheet = ss.insertSheet(sheetName);
+      sheet.getRange(1, 1, 1, SHEET_SCHEMAS[sheetName].length)
+           .setValues([SHEET_SCHEMAS[sheetName]])
+           .setFontWeight("bold")
+           .setBackground("#f1f5f9");
+      
+      // Seed initial data if sheet is new
+      seedInitialData(sheetName, sheet);
+    }
+  });
+}
+
+/**
+ * Read all rows from a sheet as an array of objects mapping headers to values
+ */
+function readSheetData(sheetName) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheetByName(sheetName);
+  if (!sheet) return [];
+  
+  const lastRow = sheet.getLastRow();
+  if (lastRow <= 1) return [];
+  
+  const headers = SHEET_SCHEMAS[sheetName];
+  const values = sheet.getRange(2, 1, lastRow - 1, headers.length).getValues();
+  
+  return values.map(row => {
+    const obj = {};
+    headers.forEach((h, idx) => {
+      let val = row[idx];
+      // Parse JSON fields
+      if ((h === "CustomFields" || h === "Options") && val) {
+        try {
+          val = JSON.parse(val);
+        } catch(e) {
+          // Fallback if not JSON string
+        }
+      }
+      // Handle active/archived booleans from Sheets
+      if (h === "Active" || h === "Archived" || h === "Mandatory") {
+        val = (val === true || val === "TRUE" || val === "true");
+      }
+      obj[camelCase(h)] = val;
+    });
+    return obj;
+  });
+}
+
+/**
+ * Fetch all tables
+ */
+function fetchAllTables() {
+  // Fetch Config needs special reshaping
+  const rawConfig = readSheetData("Config");
+  const config = {};
+  rawConfig.forEach(row => {
+    const key = row.configKey;
+    const val = row.configValue;
+    if (!config[key]) config[key] = [];
+    config[key].push(val);
+  });
+
+  return {
+    users: readSheetData("Users"),
+    config: Object.keys(config).length > 0 ? config : null,
+    formFields: readSheetData("FormFields"),
+    leads: readSheetData("Leads"),
+    meetings: readSheetData("Meetings")
+  };
+}
+
+/**
+ * Overwrites sheet values completely (for Users, Config, FormFields)
+ */
+function overwriteSheet(sheetName, objects) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheetByName(sheetName);
+  const headers = SHEET_SCHEMAS[sheetName];
+  
+  // Clear contents below header
+  const lastRow = sheet.getLastRow();
+  if (lastRow > 1) {
+    sheet.getRange(2, 1, lastRow - 1, headers.length).clearContent();
+  }
+  
+  if (objects.length === 0) return;
+  
+  const values = objects.map(obj => {
+    return headers.map(h => {
+      let val = obj[camelCase(h)];
+      if (typeof val === "object" && val !== null) {
+        val = JSON.stringify(val);
+      }
+      return val;
+    });
+  });
+  
+  sheet.getRange(2, 1, values.length, headers.length).setValues(values);
+}
+
+/**
+ * Upsert records based on ID and updatedAt timestamps (Leads and Meetings)
+ */
+function syncLeads(incomingLeads) {
+  const existingLeads = readSheetData("Leads");
+  const leadsMap = {};
+  
+  // Map existing by ID
+  existingLeads.forEach(l => {
+    leadsMap[l.leadId] = l;
+  });
+  
+  // Merge incoming
+  incomingLeads.forEach(incoming => {
+    const existing = leadsMap[incoming.leadId];
+    if (!existing) {
+      leadsMap[incoming.leadId] = incoming;
+    } else {
+      // Conflict Resolution: Keep the record with the newer updatedAt timestamp
+      const incomingTime = new Date(incoming.updatedAt || 0).getTime();
+      const existingTime = new Date(existing.updatedAt || 0).getTime();
+      if (incomingTime > existingTime) {
+        leadsMap[incoming.leadId] = incoming;
+      }
+    }
+  });
+  
+  overwriteSheet("Leads", Object.values(leadsMap));
+}
+
+function syncMeetings(incomingMeetings) {
+  const existingMeetings = readSheetData("Meetings");
+  const meetingsMap = {};
+  
+  existingMeetings.forEach(m => {
+    meetingsMap[m.meetingId] = m;
+  });
+  
+  incomingMeetings.forEach(incoming => {
+    const existing = meetingsMap[incoming.meetingId];
+    if (!existing) {
+      meetingsMap[incoming.meetingId] = incoming;
+    } else {
+      // Use createdAt/date comparison if updatedAt is missing
+      const incomingTime = new Date(incoming.createdAt || 0).getTime();
+      const existingTime = new Date(existing.createdAt || 0).getTime();
+      if (incomingTime > existingTime) {
+        meetingsMap[incoming.meetingId] = incoming;
+      }
+    }
+  });
+  
+  overwriteSheet("Meetings", Object.values(meetingsMap));
+}
+
+function syncUsers(users) {
+  overwriteSheet("Users", users);
+}
+
+function syncFormFields(fields) {
+  overwriteSheet("FormFields", fields);
+}
+
+function syncConfig(configObj) {
+  const rows = [];
+  Object.keys(configObj).forEach(key => {
+    const values = configObj[key];
+    values.forEach(val => {
+      rows.push({ configKey: key, configValue: val });
+    });
+  });
+  overwriteSheet("Config", rows);
+}
+
+/**
+ * Seed initial data if starting with a blank sheet
+ */
+function seedInitialData(sheetName, sheet) {
+  let initialRows = [];
+  
+  if (sheetName === "Users") {
+    initialRows = [
+      ["Rahul", "1111", "Rep", true],
+      ["Mayank", "6842", "Manager", true],
+      ["Admin", "9999", "Admin", true]
+    ];
+  } else if (sheetName === "Config") {
+    initialRows = [
+      ["audienceTypes", "Clinic"],
+      ["audienceTypes", "Hospital"],
+      ["audienceTypes", "Doctor"],
+      ["audienceTypes", "Diagnostic Centre"],
+      ["meetingPurposes", "First Contact"],
+      ["meetingPurposes", "Follow Up"],
+      ["meetingPurposes", "Proposal Review"],
+      ["meetingPurposes", "Contract Negotiation"],
+      ["meetingPurposes", "Closure"],
+      ["leadStatuses", "Contacted"],
+      ["leadStatuses", "Qualified"],
+      ["leadStatuses", "Referral Started"],
+      ["leadStatuses", "Converted"],
+      ["leadStatuses", "Lost"],
+      ["meetingOutcomes", "Interested"],
+      ["meetingOutcomes", "Proposal Submitted"],
+      ["meetingOutcomes", "Referral Started"],
+      ["meetingOutcomes", "Lost Opportunity"],
+      ["meetingOutcomes", "No Response"],
+      ["meetingOutcomes", "Postponed"],
+      ["nonConversionReasons", "Pricing too high"],
+      ["nonConversionReasons", "Doctor aligned elsewhere"],
+      ["nonConversionReasons", "Lack of specialities"],
+      ["nonConversionReasons", "Distance issue"],
+      ["nonConversionReasons", "Service delay"],
+      ["nonConversionReasons", "Other"]
+    ];
+  } else if (sheetName === "FormFields") {
+    initialRows = [
+      ["speciality", "Speciality Focus", "dropdown", true, JSON.stringify(["Cardiology", "Neurology", "Orthopaedics", "Oncology", "Paediatrics", "General Medicine"]), true, "lead"],
+      ["referralPotentialVolume", "Est. Monthly Referrals", "number", false, "[]", true, "lead"],
+      ["competitorActivity", "Competitor presence notes", "textarea", false, "[]", true, "lead"]
+    ];
+  }
+  
+  if (initialRows.length > 0) {
+    sheet.getRange(2, 1, initialRows.length, initialRows[0].length).setValues(initialRows);
+  }
+}
+
+// Helper: Convert Title Case sheet header to camelCase property name
+function camelCase(str) {
+  if (str === "LeadID") return "leadId";
+  if (str === "MeetingID") return "meetingId";
+  return str.charAt(0).toLowerCase() + str.slice(1);
+}
