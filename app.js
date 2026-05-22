@@ -64,6 +64,38 @@ class CRMDatabase {
     if (!localStorage.getItem("medtrack_last_sync")) {
       localStorage.setItem("medtrack_last_sync", "Never");
     }
+    if (!localStorage.getItem("medtrack_share_settings")) {
+      const defaultSettings = {
+        showStatus: true,
+        showPoc1: true,
+        showOwner: true,
+        showRevenue: true,
+        showLeadId: true,
+        showAudience: true,
+        showFollowup: true,
+        showSpeciality: true,
+        captionText: "Check out the details for referral lead: {organisation}"
+      };
+      localStorage.setItem("medtrack_share_settings", JSON.stringify(defaultSettings));
+    }
+    if (!localStorage.getItem("medtrack_standard_fields")) {
+      const defaultStdFields = [
+        { id: "leadOrg", label: "Hospital / Clinic Organisation", mandatory: true, target: "lead" },
+        { id: "leadPoc1", label: "Primary POC (Doctor Name, Phone)", mandatory: true, target: "lead" },
+        { id: "leadPoc2", label: "Secondary POC (Assistant, Admin Info)", mandatory: false, target: "lead" },
+        { id: "leadAudience", label: "Audience Type", mandatory: false, target: "lead" },
+        { id: "leadStatus", label: "Referral Status", mandatory: false, target: "lead" },
+        { id: "leadRevenue", label: "Est. Revenue Value (₹)", mandatory: true, target: "lead" },
+        { id: "leadFollowup", label: "Next Action Date", mandatory: false, target: "lead" },
+        { id: "meetingLeadId", label: "Select Hospital Lead", mandatory: true, target: "meeting" },
+        { id: "meetingPurpose", label: "Meeting Purpose", mandatory: false, target: "meeting" },
+        { id: "meetingOutcome", label: "Outcome Status", mandatory: false, target: "meeting" },
+        { id: "meetingNotes", label: "Interaction Summary Notes", mandatory: true, target: "meeting" },
+        { id: "meetingDate", label: "Visit Date", mandatory: true, target: "meeting" },
+        { id: "meetingFollowup", label: "Follow-up Date", mandatory: false, target: "meeting" }
+      ];
+      localStorage.setItem("medtrack_standard_fields", JSON.stringify(defaultStdFields));
+    }
   }
 
   // Generic Getters / Setters
@@ -123,6 +155,26 @@ class CRMDatabase {
     localStorage.setItem("medtrack_sync_url", url);
   }
 
+  getShareSettings() {
+    return JSON.parse(localStorage.getItem("medtrack_share_settings")) || {
+      showStatus: true, showPoc1: true, showOwner: true, showRevenue: true,
+      showLeadId: true, showAudience: true, showFollowup: true, showSpeciality: true,
+      captionText: "Check out the details for referral lead: {organisation}"
+    };
+  }
+
+  saveShareSettings(settings) {
+    localStorage.setItem("medtrack_share_settings", JSON.stringify(settings));
+  }
+
+  getStandardFields() {
+    return JSON.parse(localStorage.getItem("medtrack_standard_fields")) || [];
+  }
+
+  saveStandardFields(fields) {
+    localStorage.setItem("medtrack_standard_fields", JSON.stringify(fields));
+  }
+
   clearCache() {
     localStorage.removeItem("medtrack_users");
     localStorage.removeItem("medtrack_config");
@@ -130,6 +182,8 @@ class CRMDatabase {
     localStorage.removeItem("medtrack_leads");
     localStorage.removeItem("medtrack_meetings");
     localStorage.removeItem("medtrack_last_sync");
+    localStorage.removeItem("medtrack_share_settings");
+    localStorage.removeItem("medtrack_standard_fields");
     this.init();
   }
 }
@@ -242,7 +296,9 @@ function manageSheetsRouting(activeSheet, params) {
 
   // Populate data for the active sheet if needed
   if (activeSheet === "leadFormSheet") {
+    applyStandardFieldsConfig();
     const leadId = params.get("id");
+    const defaultStatus = params.get("defaultStatus");
     if (leadId) {
       const lead = db.getLeads().find(l => l.leadId === leadId);
       if (lead) {
@@ -251,17 +307,14 @@ function manageSheetsRouting(activeSheet, params) {
       }
     } else {
       selectedLead = null;
-      populateLeadFormForAdd();
+      populateLeadFormForAdd(defaultStatus);
     }
   } else if (activeSheet === "meetingFormSheet") {
-    const leadId = params.get("leadId");
-    populateMeetingForm(leadId);
+    populateMeetingForm(params.get("leadId"));
   } else if (activeSheet === "leadDetailSheet") {
-    const leadId = params.get("id");
-    renderLeadDetail(leadId);
+    renderLeadDetail(params.get("id"));
   } else if (activeSheet === "meetingDetailSheet") {
-    const meetingId = params.get("id");
-    renderMeetingDetail(meetingId);
+    renderMeetingDetail(params.get("id"));
   }
 }
 
@@ -619,9 +672,16 @@ function renderLeadsList() {
   const filtered = leads
     .filter(ownerFilter)
     .filter(lead => {
-      const matchSearch = lead.organisation.toLowerCase().includes(searchVal) || 
-                          lead.poc1.toLowerCase().includes(searchVal) ||
-                          lead.owner.toLowerCase().includes(searchVal);
+      const cleanSearchVal = searchVal.replace(/\s+/g, "").toLowerCase();
+      const cleanOrg = lead.organisation.toLowerCase().replace(/\s+/g, "");
+      const cleanPoc1 = lead.poc1.toLowerCase().replace(/\s+/g, "");
+      const cleanPoc2 = (lead.poc2 || "").toLowerCase().replace(/\s+/g, "");
+      const cleanOwner = lead.owner.toLowerCase().replace(/\s+/g, "");
+
+      const matchSearch = cleanOrg.includes(cleanSearchVal) || 
+                          cleanPoc1.includes(cleanSearchVal) ||
+                          cleanPoc2.includes(cleanSearchVal) ||
+                          cleanOwner.includes(cleanSearchVal);
       const d = new Date();
       const todayStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
       const matchStatus = activeStatusFilter === "All" || 
@@ -642,6 +702,10 @@ function renderLeadsList() {
     card.onclick = () => showLeadDetail(lead.leadId);
 
     const statusBadgeClass = `badge-${lead.status.toLowerCase().replace(" ", "-")}`;
+    
+    // Extract name before parenthesis
+    const displayName = lead.poc1.split("(")[0].trim();
+    const truncatedName = displayName.length > 25 ? displayName.substring(0, 22) + "..." : displayName;
 
     card.innerHTML = `
       <div class="record-header">
@@ -651,7 +715,7 @@ function renderLeadsList() {
       <div class="record-details">
         <div class="record-detail-item">
           <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"></circle><path d="M16 8v5a3 3 0 0 0 6 0v-1a10 10 0 1 0-3.92 7.94"></path></svg>
-          <span>${lead.poc1.split(" ")[0]}...</span>
+          <span>${truncatedName}</span>
         </div>
         <div class="record-detail-item">
           <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
@@ -710,11 +774,17 @@ function renderMeetingsList() {
   const filtered = meetings
     .filter(ownerFilter)
     .filter(meeting => {
+      const cleanSearchVal = searchVal.replace(/\s+/g, "").toLowerCase();
       const lead = leads.find(l => l.leadId === meeting.leadId);
       const orgName = lead ? lead.organisation : "";
-      return orgName.toLowerCase().includes(searchVal) || 
-             meeting.purpose.toLowerCase().includes(searchVal) ||
-             meeting.owner.toLowerCase().includes(searchVal);
+      const cleanOrg = orgName.toLowerCase().replace(/\s+/g, "");
+      const cleanPurpose = meeting.purpose.toLowerCase().replace(/\s+/g, "");
+      const cleanOwner = meeting.owner.toLowerCase().replace(/\s+/g, "");
+      const cleanNotes = (meeting.notes || "").toLowerCase().replace(/\s+/g, "");
+      return cleanOrg.includes(cleanSearchVal) || 
+             cleanPurpose.includes(cleanSearchVal) ||
+             cleanOwner.includes(cleanSearchVal) ||
+             cleanNotes.includes(cleanSearchVal);
     });
 
   if (filtered.length === 0) {
@@ -767,7 +837,7 @@ function openAddMeetingSheet() {
   showSheet("meetingFormSheet");
 }
 
-function populateLeadFormForAdd() {
+function populateLeadFormForAdd(defaultStatus = null) {
   selectedLead = null;
   document.getElementById("leadSheetTitle").innerText = "Add New Lead";
   document.getElementById("leadFormSubmitBtn").innerText = "Save Lead";
@@ -783,6 +853,16 @@ function populateLeadFormForAdd() {
   // Populate dropdowns from dynamic configuration
   populateDropdown("leadAudience", db.getConfig().audienceTypes);
   populateDropdown("leadStatus", db.getConfig().leadStatuses);
+  
+  if (defaultStatus) {
+    document.getElementById("leadStatus").value = defaultStatus;
+  } else {
+    const statuses = db.getConfig().leadStatuses;
+    if (statuses && statuses.length > 0) {
+      document.getElementById("leadStatus").value = statuses[0];
+    }
+  }
+
   populateDropdown("leadLostReason", db.getConfig().nonConversionReasons, true);
 
   // Toggle reasons box when status changes
@@ -840,6 +920,7 @@ function populateLeadFormForEdit(lead) {
 }
 
 function populateMeetingForm(preselectedLeadId = null) {
+  applyStandardFieldsConfig();
   document.getElementById("meetingSheetTitle").innerText = "Log Client Meeting";
   
   // Populate Leads Dropdown
@@ -1233,6 +1314,8 @@ function shareLeadAsImage() {
     return;
   }
 
+  const settings = db.getShareSettings();
+
   // Create canvas
   const canvas = document.createElement("canvas");
   canvas.width = 800;
@@ -1277,104 +1360,117 @@ function shareLeadAsImage() {
   ctx.fillText(selectedLead.organisation, 50, 135);
 
   // Status Badge Pill
-  const status = selectedLead.status;
-  let badgeColor = "#64748b"; // muted
-  let badgeBg = "rgba(100, 116, 139, 0.2)";
-  if (status === "Converted") {
-    badgeColor = "#10b981";
-    badgeBg = "rgba(16, 185, 129, 0.2)";
-  } else if (status === "Referral Started" || status === "Qualified") {
-    badgeColor = "#f59e0b";
-    badgeBg = "rgba(245, 158, 11, 0.2)";
-  } else if (status === "Lost") {
-    badgeColor = "#ef4444";
-    badgeBg = "rgba(239, 68, 68, 0.2)";
+  if (settings.showStatus) {
+    const status = selectedLead.status;
+    let badgeColor = "#64748b"; // muted
+    let badgeBg = "rgba(100, 116, 139, 0.2)";
+    if (status === "Converted") {
+      badgeColor = "#10b981";
+      badgeBg = "rgba(16, 185, 129, 0.2)";
+    } else if (status === "Referral Started" || status === "Qualified") {
+      badgeColor = "#f59e0b";
+      badgeBg = "rgba(245, 158, 11, 0.2)";
+    } else if (status === "Lost") {
+      badgeColor = "#ef4444";
+      badgeBg = "rgba(239, 68, 68, 0.2)";
+    }
+    
+    // Draw Status Badge background
+    ctx.fillStyle = badgeBg;
+    ctx.font = "bold 13px sans-serif";
+    const statusWidth = ctx.measureText(status).width + 24;
+    if (ctx.roundRect) {
+      ctx.beginPath();
+      ctx.roundRect(50, 160, statusWidth, 30, 15);
+      ctx.fill();
+    } else {
+      ctx.fillRect(50, 160, statusWidth, 30);
+    }
+    
+    // Draw Status Badge text
+    ctx.fillStyle = badgeColor;
+    ctx.fillText(status, 62, 180);
   }
-  
-  // Draw Status Badge background
-  ctx.fillStyle = badgeBg;
-  const statusWidth = ctx.measureText(status).width + 24;
-  if (ctx.roundRect) {
-    ctx.beginPath();
-    ctx.roundRect(50, 160, statusWidth, 30, 15);
-    ctx.fill();
-  } else {
-    ctx.fillRect(50, 160, statusWidth, 30);
+
+  // 4. Draw lead details dynamically
+  let leftY = 230;
+  if (settings.showPoc1) {
+    ctx.fillStyle = "rgba(255, 255, 255, 0.6)";
+    ctx.font = "500 13px sans-serif";
+    ctx.fillText("PRIMARY CONTACT (POC)", 50, leftY);
+    ctx.fillStyle = "#ffffff";
+    ctx.font = "600 17px sans-serif";
+    ctx.fillText(selectedLead.poc1 || "-", 50, leftY + 22);
+    leftY += 65;
   }
-  
-  // Draw Status Badge text
-  ctx.fillStyle = badgeColor;
-  ctx.font = "bold 13px sans-serif";
-  ctx.fillText(status, 62, 180);
 
-  // 4. Draw lead details
-  ctx.fillStyle = "rgba(255, 255, 255, 0.6)";
-  ctx.font = "500 14px sans-serif";
-  ctx.fillText("PRIMARY CONTACT (POC)", 50, 240);
-  ctx.fillStyle = "#ffffff";
-  ctx.font = "600 18px sans-serif";
-  ctx.fillText(selectedLead.poc1 || "-", 50, 265);
+  if (settings.showOwner) {
+    ctx.fillStyle = "rgba(255, 255, 255, 0.6)";
+    ctx.font = "500 13px sans-serif";
+    ctx.fillText("REP AGENT OWNER", 50, leftY);
+    ctx.fillStyle = "#ffffff";
+    ctx.font = "600 17px sans-serif";
+    ctx.fillText(selectedLead.owner || "-", 50, leftY + 22);
+    leftY += 65;
+  }
 
-  ctx.fillStyle = "rgba(255, 255, 255, 0.6)";
-  ctx.font = "500 14px sans-serif";
-  ctx.fillText("REP AGENT OWNER", 50, 315);
-  ctx.fillStyle = "#ffffff";
-  ctx.font = "600 18px sans-serif";
-  ctx.fillText(selectedLead.owner || "-", 50, 340);
-
-  ctx.fillStyle = "rgba(255, 255, 255, 0.6)";
-  ctx.font = "500 14px sans-serif";
-  ctx.fillText("ESTIMATED MONTHLY REFERRALS", 50, 390);
-  ctx.fillStyle = "#10b981";
-  ctx.font = "bold 24px sans-serif";
-  ctx.fillText(`₹${(selectedLead.revenuePotential || 0).toLocaleString()}`, 50, 420);
+  if (settings.showRevenue) {
+    ctx.fillStyle = "rgba(255, 255, 255, 0.6)";
+    ctx.font = "500 13px sans-serif";
+    ctx.fillText("ESTIMATED MONTHLY REFERRALS", 50, leftY);
+    ctx.fillStyle = "#10b981";
+    ctx.font = "bold 22px sans-serif";
+    ctx.fillText(`₹${(selectedLead.revenuePotential || 0).toLocaleString()}`, 50, leftY + 28);
+    leftY += 75;
+  }
 
   // 5. Draw right-side summary card
-  ctx.fillStyle = "rgba(255, 255, 255, 0.05)";
-  ctx.strokeStyle = "rgba(255, 255, 255, 0.1)";
-  ctx.lineWidth = 1;
-  if (ctx.roundRect) {
-    ctx.beginPath();
-    ctx.roundRect(460, 115, 290, 305, 16);
-    ctx.fill();
-    ctx.stroke();
-  } else {
-    ctx.fillRect(460, 115, 290, 305);
-    ctx.strokeRect(460, 115, 290, 305);
+  const metaItems = [];
+  if (settings.showLeadId) {
+    metaItems.push({ label: "Establishment ID:", val: selectedLead.leadId || "-" });
+  }
+  if (settings.showAudience) {
+    metaItems.push({ label: "Audience Type:", val: selectedLead.audienceType || "-" });
+  }
+  if (settings.showFollowup) {
+    metaItems.push({ label: "Next Followup:", val: selectedLead.followup || "None Scheduled", color: "#f59e0b" });
+  }
+  if (settings.showSpeciality) {
+    metaItems.push({ label: "Speciality:", val: selectedLead.customFields?.speciality || "-" });
   }
 
-  // Content for the right-side summary card
-  ctx.fillStyle = "#ffffff";
-  ctx.font = "bold 16px sans-serif";
-  ctx.fillText("Lead Metadata", 485, 150);
+  if (metaItems.length > 0) {
+    ctx.fillStyle = "rgba(255, 255, 255, 0.05)";
+    ctx.strokeStyle = "rgba(255, 255, 255, 0.1)";
+    ctx.lineWidth = 1;
 
-  ctx.fillStyle = "rgba(255, 255, 255, 0.5)";
-  ctx.font = "500 12px sans-serif";
-  ctx.fillText("Establishment ID:", 485, 185);
-  ctx.fillStyle = "#ffffff";
-  ctx.font = "600 13px sans-serif";
-  ctx.fillText(selectedLead.leadId || "-", 485, 205);
+    const boxHeight = 45 + (metaItems.length * 52);
+    if (ctx.roundRect) {
+      ctx.beginPath();
+      ctx.roundRect(460, 115, 290, boxHeight, 16);
+      ctx.fill();
+      ctx.stroke();
+    } else {
+      ctx.fillRect(460, 115, 290, boxHeight);
+      ctx.strokeRect(460, 115, 290, boxHeight);
+    }
 
-  ctx.fillStyle = "rgba(255, 255, 255, 0.5)";
-  ctx.font = "500 12px sans-serif";
-  ctx.fillText("Audience Type:", 485, 235);
-  ctx.fillStyle = "#ffffff";
-  ctx.font = "600 13px sans-serif";
-  ctx.fillText(selectedLead.audienceType || "-", 485, 255);
+    ctx.fillStyle = "#ffffff";
+    ctx.font = "bold 16px sans-serif";
+    ctx.fillText("Lead Metadata", 485, 148);
 
-  ctx.fillStyle = "rgba(255, 255, 255, 0.5)";
-  ctx.font = "500 12px sans-serif";
-  ctx.fillText("Next Followup:", 485, 285);
-  ctx.fillStyle = "#f59e0b";
-  ctx.font = "600 13px sans-serif";
-  ctx.fillText(selectedLead.followup || "None Scheduled", 485, 305);
-
-  ctx.fillStyle = "rgba(255, 255, 255, 0.5)";
-  ctx.font = "500 12px sans-serif";
-  ctx.fillText("Speciality:", 485, 335);
-  ctx.fillStyle = "#ffffff";
-  ctx.font = "600 13px sans-serif";
-  ctx.fillText(selectedLead.customFields?.speciality || "-", 485, 355);
+    let metaY = 182;
+    metaItems.forEach(item => {
+      ctx.fillStyle = "rgba(255, 255, 255, 0.5)";
+      ctx.font = "500 12px sans-serif";
+      ctx.fillText(item.label, 485, metaY);
+      
+      ctx.fillStyle = item.color || "#ffffff";
+      ctx.font = "600 13px sans-serif";
+      ctx.fillText(item.val, 485, metaY + 18);
+      metaY += 52;
+    });
+  }
 
   // Footer branding
   ctx.fillStyle = "rgba(255, 255, 255, 0.3)";
@@ -1382,6 +1478,15 @@ function shareLeadAsImage() {
   const now = new Date();
   ctx.fillText(`Generated on ${now.toLocaleString()}`, 50, 470);
   ctx.fillText("Confidential CRM Record", 610, 470);
+
+  // Parse share caption text
+  let caption = settings.captionText || "Check out the details for referral lead: {organisation}";
+  caption = caption
+    .replace(/{organisation}/g, selectedLead.organisation)
+    .replace(/{poc1}/g, selectedLead.poc1 || "")
+    .replace(/{status}/g, selectedLead.status || "")
+    .replace(/{owner}/g, selectedLead.owner || "")
+    .replace(/{leadId}/g, selectedLead.leadId || "");
 
   // Perform sharing or fallback
   canvas.toBlob(blob => {
@@ -1392,7 +1497,7 @@ function shareLeadAsImage() {
       navigator.share({
         files: [file],
         title: `${selectedLead.organisation} CRM Card`,
-        text: `Check out the details for referral lead: ${selectedLead.organisation}`
+        text: caption
       }).catch(err => {
         console.warn("Share failed, falling back to download", err);
         triggerDownload(canvas);
@@ -1512,6 +1617,8 @@ function renderAdminPanel() {
     renderAdminDropdowns();
   } else if (activeAdminTab === "forms") {
     renderAdminForms();
+  } else if (activeAdminTab === "sharing") {
+    renderAdminSharing();
   } else if (activeAdminTab === "sync") {
     renderAdminSync();
   }
@@ -1652,7 +1759,121 @@ function deleteDropdownOption(key, idx) {
 }
 
 // 3. Custom Dynamic Fields Config Admin
+let editingStdFieldId = null;
+
+function applyStandardFieldsConfig() {
+  const fields = db.getStandardFields();
+  fields.forEach(field => {
+    const labelEl = document.getElementById(`lbl_${field.id}`);
+    const inputEl = document.getElementById(field.id);
+    
+    if (labelEl) {
+      labelEl.innerText = field.label;
+      if (field.mandatory) {
+        labelEl.classList.add("required");
+      } else {
+        labelEl.classList.remove("required");
+      }
+    }
+    
+    if (inputEl) {
+      if (field.mandatory) {
+        inputEl.setAttribute("required", "true");
+      } else {
+        inputEl.removeAttribute("required");
+      }
+    }
+  });
+}
+
+function renderAdminStdFields() {
+  const stdFields = db.getStandardFields();
+  const tbody = document.getElementById("adminStdFieldsTableBody");
+  tbody.innerHTML = "";
+
+  stdFields.forEach(field => {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td style="font-weight:600; color:var(--primary);"><code>${field.id}</code></td>
+      <td>${field.label}</td>
+      <td>${field.target.toUpperCase()}</td>
+      <td>${field.mandatory ? "Yes" : "No"}</td>
+      <td>
+        <button class="btn btn-secondary" style="height:28px; padding:0 8px; font-size:0.75rem; width:auto;" onclick="editStdField('${field.id}')">Edit</button>
+      </td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
+function editStdField(id) {
+  const stdFields = db.getStandardFields();
+  const field = stdFields.find(f => f.id === id);
+  if (!field) return;
+
+  editingStdFieldId = id;
+  document.getElementById("editStdFieldId").innerText = id;
+  document.getElementById("editStdLabel").value = field.label;
+  document.getElementById("editStdMandatory").checked = field.mandatory;
+  
+  document.getElementById("standardFieldEditor").style.display = "block";
+  document.getElementById("standardFieldEditor").scrollIntoView({ behavior: 'smooth' });
+}
+
+function cancelStdFieldEdit() {
+  editingStdFieldId = null;
+  document.getElementById("standardFieldEditor").style.display = "none";
+}
+
+function saveStdFieldChange() {
+  if (!editingStdFieldId) return;
+
+  const stdFields = db.getStandardFields();
+  const idx = stdFields.findIndex(f => f.id === editingStdFieldId);
+  if (idx !== -1) {
+    stdFields[idx].label = document.getElementById("editStdLabel").value.trim();
+    stdFields[idx].mandatory = document.getElementById("editStdMandatory").checked;
+    
+    db.saveStandardFields(stdFields);
+    showToast("Standard field settings updated!", "success");
+    applyStandardFieldsConfig();
+    cancelStdFieldEdit();
+    renderAdminStdFields();
+  }
+}
+
+function renderAdminSharing() {
+  const settings = db.getShareSettings();
+  document.getElementById("shareShowStatus").checked = settings.showStatus;
+  document.getElementById("shareShowPoc1").checked = settings.showPoc1;
+  document.getElementById("shareShowOwner").checked = settings.showOwner;
+  document.getElementById("shareShowRevenue").checked = settings.showRevenue;
+  document.getElementById("shareShowLeadId").checked = settings.showLeadId;
+  document.getElementById("shareShowAudience").checked = settings.showAudience;
+  document.getElementById("shareShowFollowup").checked = settings.showFollowup;
+  document.getElementById("shareShowSpeciality").checked = settings.showSpeciality;
+  document.getElementById("shareCaptionText").value = settings.captionText;
+}
+
+function saveShareSettings() {
+  const settings = {
+    showStatus: document.getElementById("shareShowStatus").checked,
+    showPoc1: document.getElementById("shareShowPoc1").checked,
+    showOwner: document.getElementById("shareShowOwner").checked,
+    showRevenue: document.getElementById("shareShowRevenue").checked,
+    showLeadId: document.getElementById("shareShowLeadId").checked,
+    showAudience: document.getElementById("shareShowAudience").checked,
+    showFollowup: document.getElementById("shareShowFollowup").checked,
+    showSpeciality: document.getElementById("shareShowSpeciality").checked,
+    captionText: document.getElementById("shareCaptionText").value
+  };
+  db.saveShareSettings(settings);
+  showToast("Share card settings saved!", "success");
+}
+
 function renderAdminForms() {
+  // Render standard fields configuration
+  renderAdminStdFields();
   const fields = db.getFormFields();
   const tbody = document.getElementById("adminFormsTableBody");
   tbody.innerHTML = "";
@@ -1859,16 +2080,19 @@ function toggleFabMenu() {
 
 function handleFabItemClick(action) {
   toggleFabMenu();
-  if (action === "addLead") {
-    openAddLeadSheet();
+  if (action === "addReferral") {
+    showSheet("leadFormSheet", { defaultStatus: "Referral Started" });
+  } else if (action === "addLead") {
+    showSheet("leadFormSheet");
   } else if (action === "addMeeting") {
-    openAddMeetingSheet();
+    showSheet("meetingFormSheet");
   }
 }
 
 // --- APP RUNTIME INITIALIZATION ---
 window.addEventListener("hashchange", handleRouting);
 window.addEventListener("load", () => {
+  applyStandardFieldsConfig();
   handleRouting();
 
   // Listen to network status to update icon indicator

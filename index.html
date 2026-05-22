@@ -149,7 +149,7 @@
         <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>
       </a>
       <div>
-        <h2 class="view-title">Referral Leads</h2>
+        <h2 class="view-title">All Leads</h2>
         <p class="view-subtitle">Establishments & Target Growth Accounts</p>
       </div>
     </div>
@@ -266,7 +266,8 @@
     <div class="admin-tab-bar">
       <div class="admin-tab active" onclick="switchAdminTab('users')">User Management</div>
       <div class="admin-tab" onclick="switchAdminTab('dropdowns')">Dynamic Dropdowns</div>
-      <div class="admin-tab" onclick="switchAdminTab('forms')">Dynamic Lead Form</div>
+      <div class="admin-tab" onclick="switchAdminTab('forms')">Form Fields Settings</div>
+      <div class="admin-tab" onclick="switchAdminTab('sharing')">Share Card Settings</div>
       <div class="admin-tab" onclick="switchAdminTab('sync')">Sheets Sync Settings</div>
     </div>
 
@@ -333,6 +334,45 @@
 
     <!-- Tab 3: Dynamic Forms Settings -->
     <div id="admin_forms" class="admin-section">
+      <!-- Standard Fields Admin Section -->
+      <div class="glass" style="padding: 20px; border-radius: var(--radius-md); margin-bottom: 20px;">
+        <h4 style="color: var(--primary); margin-bottom: 12px;">Standard Fields Configuration</h4>
+        
+        <!-- Editor for Standard Field (Hidden by default) -->
+        <div id="standardFieldEditor" style="display: none; background: var(--bg-app); padding: 16px; border-radius: var(--radius-md); margin-bottom: 16px; border: 1px solid var(--card-border);">
+          <h5 style="color: var(--primary); margin-bottom: 8px;">Edit Standard Field: <span id="editStdFieldId" style="color: var(--text-muted); font-weight: bold;"></span></h5>
+          <div class="form-grid" style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-bottom: 12px;">
+            <div class="form-group" style="grid-column: span 2;">
+              <label class="form-label">Field Label (Displayed on Form)</label>
+              <input type="text" id="editStdLabel" class="form-control" required>
+            </div>
+            <div class="form-group" style="grid-column: span 2; display: flex; align-items: center; gap: 8px;">
+              <input type="checkbox" id="editStdMandatory">
+              <label class="form-label" style="margin: 0;">Mandatory (Required Field)</label>
+            </div>
+          </div>
+          <div style="display: flex; gap: 10px;">
+            <button type="button" class="btn btn-primary" onclick="saveStdFieldChange()" style="flex: 1; height: 38px; font-size: 0.85rem;">Save Changes</button>
+            <button type="button" class="btn btn-secondary" onclick="cancelStdFieldEdit()" style="flex: 1; height: 38px; font-size: 0.85rem;">Cancel</button>
+          </div>
+        </div>
+
+        <div class="admin-table-wrapper">
+          <table class="admin-table">
+            <thead>
+              <tr>
+                <th>Field ID</th>
+                <th>Display Label</th>
+                <th>Target Form</th>
+                <th>Mandatory</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody id="adminStdFieldsTableBody"></tbody>
+          </table>
+        </div>
+      </div>
+
       <form class="glass" style="padding: 20px; border-radius: var(--radius-md); margin-bottom: 20px; display: flex; flex-direction: column; gap: 16px;" onsubmit="addFormField(event)">
         <h4 style="color: var(--primary);">Add Custom Fields (No-Code Form Creator)</h4>
         
@@ -396,6 +436,59 @@
       </div>
     </div>
 
+    <!-- Tab 5: Share Card Settings -->
+    <div id="admin_sharing" class="admin-section">
+      <div class="glass" style="padding: 20px; border-radius: var(--radius-md); display: flex; flex-direction: column; gap: 16px;">
+        <h4 style="color: var(--primary);">Configure Shareable Lead Card</h4>
+        <p style="font-size: 0.85rem; color: var(--text-muted); line-height: 1.4;">
+          Select which fields should be visible on the generated image card when sharing a lead.
+        </p>
+        
+        <div style="display: flex; flex-direction: column; gap: 10px;" id="shareFieldsContainer">
+          <label class="form-checkbox">
+            <input type="checkbox" id="shareShowStatus" checked>
+            <span>Referral Status</span>
+          </label>
+          <label class="form-checkbox">
+            <input type="checkbox" id="shareShowPoc1" checked>
+            <span>Primary POC (Doctor & Phone)</span>
+          </label>
+          <label class="form-checkbox">
+            <input type="checkbox" id="shareShowOwner" checked>
+            <span>Rep Owner</span>
+          </label>
+          <label class="form-checkbox">
+            <input type="checkbox" id="shareShowRevenue" checked>
+            <span>Est. Monthly Referrals (Revenue Potential)</span>
+          </label>
+          <label class="form-checkbox">
+            <input type="checkbox" id="shareShowLeadId" checked>
+            <span>Lead ID</span>
+          </label>
+          <label class="form-checkbox">
+            <input type="checkbox" id="shareShowAudience" checked>
+            <span>Audience Type</span>
+          </label>
+          <label class="form-checkbox">
+            <input type="checkbox" id="shareShowFollowup" checked>
+            <span>Next Follow-up Date</span>
+          </label>
+          <label class="form-checkbox">
+            <input type="checkbox" id="shareShowSpeciality" checked>
+            <span>Speciality Focus (Custom Field)</span>
+          </label>
+        </div>
+
+        <div class="form-group" style="margin-top: 10px;">
+          <label class="form-label">Default Share Caption / Text</label>
+          <textarea id="shareCaptionText" class="form-control" placeholder="E.g. Check out the details for referral lead: {organisation}" style="height: 80px;"></textarea>
+          <span style="font-size: 0.75rem; color: var(--text-muted);">Use <code>{organisation}</code>, <code>{poc1}</code>, <code>{status}</code> to inject lead info dynamically.</span>
+        </div>
+
+        <button class="btn btn-primary" onclick="saveShareSettings()" style="height: 44px; margin-top: 10px;">Save Share Settings</button>
+      </div>
+    </div>
+
     <!-- Tab 4: Sync Settings -->
     <div id="admin_sync" class="admin-section">
       <div class="glass" style="padding: 20px; border-radius: var(--radius-md); display: flex; flex-direction: column; gap: 20px;">
@@ -428,13 +521,17 @@
 
   <div id="fabSheet" class="fab-sheet" onclick="toggleFabMenu()">
     <div class="fab-menu-content glass" onclick="event.stopPropagation()">
-      <div class="fab-menu-item" onclick="handleFabItemClick('addLead')">
+      <div class="fab-menu-item" onclick="handleFabItemClick('addReferral')">
         <svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="12" y1="8" x2="12" y2="16"></line><line x1="8" y1="12" x2="16" y2="12"></line></svg>
-        <span>Add Referral Lead</span>
+        <span>Add Referral</span>
       </div>
       <div class="fab-menu-item" onclick="handleFabItemClick('addMeeting')">
         <svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
         <span>Log Client Meeting</span>
+      </div>
+      <div class="fab-menu-item" onclick="handleFabItemClick('addLead')">
+        <svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="12" y1="8" x2="12" y2="16"></line><line x1="8" y1="12" x2="16" y2="12"></line></svg>
+        <span>Add New Lead</span>
       </div>
     </div>
   </div>
@@ -486,36 +583,36 @@
       </div>
       <form id="leadFormEl" class="form-grid">
         <div class="form-group">
-          <label class="form-label required">Hospital / Clinic Organisation</label>
-          <input type="text" id="leadOrg" class="form-control" placeholder="E.g. City Care Center" required>
+          <label id="lbl_leadOrg" class="form-label required">Hospital / Clinic Organisation</label>
+          <input type="text" id="leadOrg" class="form-control" placeholder="E.g. City Care Center">
         </div>
         <div class="form-group">
-          <label class="form-label required">Primary POC (Doctor Name, Phone)</label>
-          <input type="text" id="leadPoc1" class="form-control" placeholder="E.g. Dr. Verma +91 9988..." required>
+          <label id="lbl_leadPoc1" class="form-label required">Primary POC (Doctor Name, Phone)</label>
+          <input type="text" id="leadPoc1" class="form-control" placeholder="E.g. Dr. Verma +91 9988...">
         </div>
         <div class="form-group">
-          <label class="form-label">Secondary POC (Assistant, Admin Info)</label>
+          <label id="lbl_leadPoc2" class="form-label">Secondary POC (Assistant, Admin Info)</label>
           <input type="text" id="leadPoc2" class="form-control" placeholder="Name or number (optional)">
         </div>
         
         <div style="display:grid; grid-template-columns: repeat(2, 1fr); gap: 12px;">
           <div class="form-group">
-            <label class="form-label">Audience Type</label>
+            <label id="lbl_leadAudience" class="form-label">Audience Type</label>
             <select id="leadAudience" class="form-control"></select>
           </div>
           <div class="form-group">
-            <label class="form-label">Referral Status</label>
+            <label id="lbl_leadStatus" class="form-label">Referral Status</label>
             <select id="leadStatus" class="form-control" onchange="toggleLostReasonsBox()"></select>
           </div>
         </div>
 
         <div style="display:grid; grid-template-columns: repeat(2, 1fr); gap: 12px;">
           <div class="form-group">
-            <label class="form-label">Est. Revenue Value (₹)</label>
-            <input type="number" id="leadRevenue" class="form-control" placeholder="Value in INR" required>
+            <label id="lbl_leadRevenue" class="form-label">Est. Revenue Value (₹)</label>
+            <input type="number" id="leadRevenue" class="form-control" placeholder="Value in INR">
           </div>
           <div class="form-group">
-            <label class="form-label">Next Action Date</label>
+            <label id="lbl_leadFollowup" class="form-label">Next Action Date</label>
             <input type="date" id="leadFollowup" class="form-control">
           </div>
         </div>
@@ -552,33 +649,33 @@
       </div>
       <form id="meetingFormEl" class="form-grid">
         <div class="form-group">
-          <label class="form-label required">Select Hospital Lead</label>
-          <select id="meetingLeadId" class="form-control" required></select>
+          <label id="lbl_meetingLeadId" class="form-label required">Select Hospital Lead</label>
+          <select id="meetingLeadId" class="form-control"></select>
         </div>
         
         <div style="display:grid; grid-template-columns: repeat(2, 1fr); gap: 12px;">
           <div class="form-group">
-            <label class="form-label">Meeting Purpose</label>
+            <label id="lbl_meetingPurpose" class="form-label">Meeting Purpose</label>
             <select id="meetingPurpose" class="form-control"></select>
           </div>
           <div class="form-group">
-            <label class="form-label">Outcome Status</label>
+            <label id="lbl_meetingOutcome" class="form-label">Outcome Status</label>
             <select id="meetingOutcome" class="form-control"></select>
           </div>
         </div>
 
         <div class="form-group">
-          <label class="form-label required">Interaction Summary Notes</label>
-          <textarea id="meetingNotes" class="form-control" placeholder="Brief details about referrals discussion, doctor requirements..." required></textarea>
+          <label id="lbl_meetingNotes" class="form-label required">Interaction Summary Notes</label>
+          <textarea id="meetingNotes" class="form-control" placeholder="Brief details about referrals discussion, doctor requirements..."></textarea>
         </div>
 
         <div style="display:grid; grid-template-columns: repeat(2, 1fr); gap: 12px;">
           <div class="form-group">
-            <label class="form-label">Visit Date</label>
-            <input type="date" id="meetingDate" class="form-control" required>
+            <label id="lbl_meetingDate" class="form-label">Visit Date</label>
+            <input type="date" id="meetingDate" class="form-control">
           </div>
           <div class="form-group">
-            <label class="form-label">Follow-up Date</label>
+            <label id="lbl_meetingFollowup" class="form-label">Follow-up Date</label>
             <input type="date" id="meetingFollowup" class="form-control">
           </div>
         </div>
