@@ -211,11 +211,11 @@ function checkSession() {
       managerTabs.forEach(t => t.style.display = "none");
       adminTabs.forEach(t => t.style.display = "none");
     } else if (currentUser.role === "Manager") {
-      managerTabs.forEach(t => t.style.display = "flex");
+      managerTabs.forEach(t => t.style.display = "");
       adminTabs.forEach(t => t.style.display = "none");
     } else {
-      managerTabs.forEach(t => t.style.display = "flex");
-      adminTabs.forEach(t => t.style.display = "flex");
+      managerTabs.forEach(t => t.style.display = "");
+      adminTabs.forEach(t => t.style.display = "");
     }
   } else {
     currentUser = null;
