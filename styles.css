@@ -1243,26 +1243,38 @@ textarea.form-control {
     padding-bottom: 20px;
   }
   
-  .bottom-nav {
+  .app-header {
+    position: fixed;
     top: 0;
-    bottom: auto;
+    left: 0;
+    right: 0;
     height: 64px;
+    padding: 0 24px;
+    border-bottom: 1px solid var(--card-border);
+    z-index: 100;
+  }
+
+  .bottom-nav {
+    top: 64px; /* Stack directly below the header */
+    bottom: auto;
+    height: 60px;
     border-radius: 0;
     border-bottom: 1px solid var(--card-border);
     border-top: none;
     padding: 0 40px;
+    z-index: 99;
   }
   
   .nav-center-group {
-    display: none;
+    display: flex;
   }
-  
-  .app-header {
-    display: none;
+
+  .nav-fab-btn {
+    top: 4px; /* Vertically center in the 60px navbar */
   }
   
   .view-container {
-    margin-top: 80px;
+    margin-top: 148px; /* Offset for stacked header and navbar */
   }
   
   .dashboard-grid {
@@ -1271,7 +1283,7 @@ textarea.form-control {
   
   .fab-menu-content {
     bottom: auto;
-    top: 80px;
+    top: 130px; /* Positioned below the navigation bar */
     right: 40px;
     left: auto;
     transform: translateY(-20px);
