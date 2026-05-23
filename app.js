@@ -1989,17 +1989,17 @@ function forceSync() {
 }
 
 // --- GOOGLE APPS SCRIPT SYNC ENGINE ---
-async function triggerSync() {
+async function triggerSync(isSilent = false) {
   const settings = db.getSyncSettings();
   if (!settings.url) {
-    showToast("Sync URL not configured! Running in local sandbox mode.", "warning");
+    if (!isSilent) showToast("Sync URL not configured! Running in local sandbox mode.", "warning");
     return;
   }
 
   const badge = document.getElementById("syncBadge");
   badge.classList.add("syncing");
   badge.innerText = "Syncing...";
-  showToast("Initializing Sheet Sync...", "info");
+  if (!isSilent) showToast("Initializing Sheet Sync...", "info");
 
   // Payload for post: sends entire local state for simplicity & robustness in Apps Script merges
   const payload = {
@@ -2034,7 +2034,7 @@ async function triggerSync() {
       localStorage.setItem("medtrack_last_sync", timestamp);
       document.getElementById("adminLastSyncDisplay").innerText = timestamp;
       
-      showToast("Bidirectional Sheets sync complete!", "success");
+      if (!isSilent) showToast("Bidirectional Sheets sync complete!", "success");
       
       badge.classList.remove("syncing");
       badge.classList.add("online");
@@ -2048,7 +2048,7 @@ async function triggerSync() {
     }
   } catch (error) {
     console.error("Sync error: ", error);
-    showToast("Sync failed. Check API URL and permissions.", "error");
+    if (!isSilent) showToast("Sync failed. Check API URL and permissions.", "error");
     
     badge.classList.remove("syncing");
     badge.classList.add("offline");
@@ -2089,6 +2089,31 @@ function handleFabItemClick(action) {
   }
 }
 
+let autoSyncTimerId = null;
+
+function startAutoSyncTimer() {
+  // Sync every 15 minutes (900,000 ms)
+  const SYNC_INTERVAL = 15 * 60 * 1000;
+  
+  // Randomize initial delay slightly (between 30s and 3 mins) so users don't sync at the exact same millisecond
+  const initialDelay = (30 + Math.random() * 150) * 1000;
+  
+  setTimeout(() => {
+    attemptAutoSync();
+    
+    autoSyncTimerId = setInterval(() => {
+      attemptAutoSync();
+    }, SYNC_INTERVAL);
+  }, initialDelay);
+}
+
+function attemptAutoSync() {
+  if (currentUser && navigator.onLine && db.getSyncSettings().url) {
+    console.log("[Auto-Sync] Triggering background synchronization...");
+    triggerSync(true);
+  }
+}
+
 // --- APP RUNTIME INITIALIZATION ---
 window.addEventListener("hashchange", handleRouting);
 window.addEventListener("load", () => {
@@ -2116,4 +2141,7 @@ window.addEventListener("load", () => {
   // Bind forms submit actions
   document.getElementById("leadFormEl").addEventListener("submit", submitLeadForm);
   document.getElementById("meetingFormEl").addEventListener("submit", submitMeetingForm);
+
+  // Start background auto sync timer
+  startAutoSyncTimer();
 });
