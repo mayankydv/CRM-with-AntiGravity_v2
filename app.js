@@ -1848,43 +1848,48 @@ function renderReferralsList() {
       if (r.reachedDetails?.receptionEnquiry) services.push("Enquiry");
       
       detailsHtml = `
-        <div style="font-size:0.8rem; margin-top:6px; color:var(--success);">
+        <div style="grid-column: span 2; font-size:0.8rem; margin-top:4px; padding-top:6px; border-top:1px solid rgba(255,255,255,0.05); color:var(--success);">
           <strong>Services:</strong> ${services.join(", ") || "None"}
           ${r.admissionId ? `<br><strong>Adm ID:</strong> ${r.admissionId}` : ""}
         </div>
       `;
     } else if (r.reached === "No") {
       detailsHtml = `
-        <div style="font-size:0.8rem; margin-top:6px; color:var(--danger);">
+        <div style="grid-column: span 2; font-size:0.8rem; margin-top:4px; padding-top:6px; border-top:1px solid rgba(255,255,255,0.05); color:var(--danger);">
           <strong>Reason:</strong> ${r.remarks || "No remark provided"}
         </div>
       `;
     } else {
-      detailsHtml = `
-        <div style="font-size:0.8rem; margin-top:6px; color:var(--text-muted);">
-          <strong>Note:</strong> ${r.remarks || "Patient expected to visit"}
-        </div>
-      `;
+      if (r.remarks) {
+        detailsHtml = `
+          <div style="grid-column: span 2; font-size:0.8rem; margin-top:4px; padding-top:6px; border-top:1px solid rgba(255,255,255,0.05); color:var(--text-muted);">
+            <strong>Remark:</strong> ${r.remarks}
+          </div>
+        `;
+      }
     }
     
     card.innerHTML = `
       <div class="record-header">
-        <div class="record-title" style="font-size: 1rem; font-weight:700;">Patient: ${r.patientName}</div>
+        <div class="record-title" style="font-size: 1.05rem; font-weight:700;">Patient: ${r.patientName}</div>
         <div class="record-badge ${statusClass}">${r.reached || "Pending"}</div>
       </div>
-      <div class="record-details" style="margin-top: 8px; border-top: 1px solid rgba(255,255,255,0.05); padding-top: 6px;">
-        <div class="record-detail-item">
-          <strong>Hospital:</strong> ${leadName}
+      <div class="record-details" style="margin-top: 10px; margin-bottom: 10px;">
+        <div class="record-detail-item" style="grid-column: span 2;">
+          <svg viewBox="0 0 24 24"><path d="M19 2H5c-1.1 0-1.99.9-1.99 2L3 20c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-1 11h-4v4h-2v-4H7v-2h4V7h2v4h4v2z"/></svg>
+          <span style="font-weight:600; color:var(--primary);">${leadName}</span>
         </div>
         <div class="record-detail-item">
-          <strong>Phone:</strong> ${r.patientPhone}
+          <svg viewBox="0 0 24 24"><path d="M20.01 15.38c-1.23 0-2.42-.2-3.53-.57a1 1 0 0 0-1.01.24l-2.2 2.2a15.045 15.045 0 0 1-6.59-6.59l2.2-2.21a1 1 0 0 0 .24-1A11.36 11.36 0 0 1 8.5 4c0-.55-.45-1-1-1H4.03C3.47 3 3 3.47 3 4.02 3 13.39 10.61 21 19.98 21c.54 0 1-.46 1-1.02V16.38c0-.55-.45-1-1-1z"/></svg>
+          <span>${r.patientPhone}</span>
         </div>
         <div class="record-detail-item">
-          <strong>Expected Visit:</strong> ${r.visitDate}
+          <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
+          <span>Visit: ${r.visitDate}</span>
         </div>
         ${detailsHtml}
       </div>
-      <div class="record-footer" style="margin-top: 8px;">
+      <div class="record-footer">
         <div class="record-owner">
           <div class="record-owner-avatar">${r.owner[0]}</div>
           <span>Logged by: ${r.owner}</span>
