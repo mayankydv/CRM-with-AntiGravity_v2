@@ -102,7 +102,11 @@ function readSheetData(sheetName) {
   const headers = SHEET_SCHEMAS[sheetName];
   const values = sheet.getRange(2, 1, lastRow - 1, headers.length).getValues();
   
-  return values.map(row => {
+  const results = [];
+  values.forEach(row => {
+    const idVal = row[0];
+    if (idVal === undefined || idVal === null || idVal === "") return; // Skip empty rows
+    
     const obj = {};
     headers.forEach((h, idx) => {
       let val = row[idx];
@@ -120,8 +124,9 @@ function readSheetData(sheetName) {
       }
       obj[camelCase(h)] = val;
     });
-    return obj;
+    results.push(obj);
   });
+  return results;
 }
 
 /**

@@ -120,7 +120,7 @@ class CRMDatabase {
   getFormFields() { return this.get("form_fields"); }
   saveFormFields(fields) { this.set("form_fields", fields); }
 
-  getLeads() { return this.get("leads").filter(l => !l.archived); }
+  getLeads() { return (this.get("leads") || []).filter(l => l && l.leadId && !l.archived); }
   saveLead(lead) {
     const leads = this.get("leads");
     lead.updatedAt = new Date().toISOString();
@@ -134,7 +134,7 @@ class CRMDatabase {
     this.set("leads", leads);
   }
 
-  getMeetings() { return this.get("meetings").filter(m => !m.archived); }
+  getMeetings() { return (this.get("meetings") || []).filter(m => m && m.meetingId && !m.archived); }
   saveMeeting(meeting) {
     const meetings = this.get("meetings");
     meeting.createdAt = meeting.createdAt || new Date().toISOString();
@@ -147,7 +147,7 @@ class CRMDatabase {
     this.set("meetings", meetings);
   }
 
-  getReferrals() { return this.get("referrals").filter(r => !r.archived); }
+  getReferrals() { return (this.get("referrals") || []).filter(r => r && r.referralId && !r.archived); }
   saveReferral(referral) {
     const referrals = this.get("referrals");
     referral.createdAt = referral.createdAt || new Date().toISOString();
@@ -332,12 +332,12 @@ function manageSheetsRouting(activeSheet, params) {
   } else if (activeSheet === "leadDetailSheet") {
     const leadId = params.get("id");
     if (leadId) {
-      showLeadDetail(leadId);
+      renderLeadDetail(leadId);
     }
   } else if (activeSheet === "meetingDetailSheet") {
     const meetingId = params.get("id");
     if (meetingId) {
-      showMeetingDetail(meetingId);
+      renderMeetingDetail(meetingId);
     }
   } else if (activeSheet === "referralFormSheet") {
     populateReferralFormForAdd();
