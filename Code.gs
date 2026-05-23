@@ -9,6 +9,7 @@ const SHEET_SCHEMAS = {
   Users: ["Name", "PIN", "Role", "Active"],
   Leads: ["LeadID", "Organisation", "POC1", "POC2", "AudienceType", "Owner", "Status", "Followup", "RevenuePotential", "NonConversionReason", "NonConversionAction", "CreatedAt", "UpdatedAt", "Archived", "CustomFields"],
   Meetings: ["MeetingID", "LeadID", "Purpose", "Notes", "Outcome", "Owner", "GPS", "Date", "Followup", "CreatedAt", "Archived", "Photo", "CustomFields"],
+  Referrals: ["ReferralID", "LeadID", "PatientName", "PatientPhone", "VisitDate", "Reached", "OPD", "IPD", "Investigations", "Medicines", "Consultation", "ReceptionEnquiry", "AdmissionID", "Remarks", "Owner", "CreatedAt", "UpdatedAt", "Archived"],
   Config: ["ConfigKey", "ConfigValue"],
   FormFields: ["ID", "Label", "Type", "Mandatory", "Options", "Active", "Target"]
 };
@@ -47,6 +48,7 @@ function doPost(e) {
     if (payload.formFields) syncFormFields(payload.formFields);
     if (payload.leads) syncLeads(payload.leads);
     if (payload.meetings) syncMeetings(payload.meetings);
+    if (payload.referrals) syncReferrals(payload.referrals);
     
     // Fetch fresh merged state to send back to client
     const freshData = fetchAllTables();
@@ -116,7 +118,7 @@ function readSheetData(sheetName) {
         }
       }
       // Handle active/archived booleans from Sheets
-      if (h === "Active" || h === "Archived" || h === "Mandatory") {
+      if (h === "Active" || h === "Archived" || h === "Mandatory" || h === "OPD" || h === "IPD" || h === "Investigations" || h === "Medicines" || h === "Consultation" || h === "ReceptionEnquiry") {
         val = (val === true || val === "TRUE" || val === "true");
       }
       obj[camelCase(h)] = val;
@@ -144,7 +146,8 @@ function fetchAllTables() {
     config: Object.keys(config).length > 0 ? config : null,
     formFields: readSheetData("FormFields"),
     leads: readSheetData("Leads"),
-    meetings: readSheetData("Meetings")
+    meetings: readSheetData("Meetings"),
+    referrals: readSheetData("Referrals")
   };
 }
 
@@ -232,6 +235,30 @@ function syncMeetings(incomingMeetings) {
   overwriteSheet("Meetings", Object.values(meetingsMap));
 }
 
+function syncReferrals(incomingReferrals) {
+  const existingReferrals = readSheetData("Referrals");
+  const referralsMap = {};
+  
+  existingReferrals.forEach(r => {
+    referralsMap[r.referralId] = r;
+  });
+  
+  incomingReferrals.forEach(incoming => {
+    const existing = referralsMap[incoming.referralId];
+    if (!existing) {
+      referralsMap[incoming.referralId] = incoming;
+    } else {
+      const incomingTime = new Date(incoming.updatedAt || incoming.createdAt || 0).getTime();
+      const existingTime = new Date(existing.updatedAt || existing.createdAt || 0).getTime();
+      if (incomingTime > existingTime) {
+        referralsMap[incoming.referralId] = incoming;
+      }
+    }
+  });
+  
+  overwriteSheet("Referrals", Object.values(referralsMap));
+}
+
 function syncUsers(users) {
   overwriteSheet("Users", users);
 }
@@ -309,5 +336,7 @@ function seedInitialData(sheetName, sheet) {
 function camelCase(str) {
   if (str === "LeadID") return "leadId";
   if (str === "MeetingID") return "meetingId";
+  if (str === "ReferralID") return "referralId";
+  if (str === "AdmissionID") return "admissionId";
   return str.charAt(0).toLowerCase() + str.slice(1);
 }

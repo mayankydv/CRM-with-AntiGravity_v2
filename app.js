@@ -58,6 +58,9 @@ class CRMDatabase {
     if (!localStorage.getItem("medtrack_meetings")) {
       localStorage.setItem("medtrack_meetings", JSON.stringify(DEFAULT_MEETINGS));
     }
+    if (!localStorage.getItem("medtrack_referrals")) {
+      localStorage.setItem("medtrack_referrals", JSON.stringify([]));
+    }
     if (!localStorage.getItem("medtrack_sync_url")) {
       localStorage.setItem("medtrack_sync_url", "");
     }
@@ -144,6 +147,20 @@ class CRMDatabase {
     this.set("meetings", meetings);
   }
 
+  getReferrals() { return this.get("referrals").filter(r => !r.archived); }
+  saveReferral(referral) {
+    const referrals = this.get("referrals");
+    referral.createdAt = referral.createdAt || new Date().toISOString();
+    referral.updatedAt = new Date().toISOString();
+    const idx = referrals.findIndex(r => r.referralId === referral.referralId);
+    if (idx !== -1) {
+      referrals[idx] = referral;
+    } else {
+      referrals.push(referral);
+    }
+    this.set("referrals", referrals);
+  }
+
   getSyncSettings() {
     return {
       url: localStorage.getItem("medtrack_sync_url") || "",
@@ -181,6 +198,7 @@ class CRMDatabase {
     localStorage.removeItem("medtrack_form_fields");
     localStorage.removeItem("medtrack_leads");
     localStorage.removeItem("medtrack_meetings");
+    localStorage.removeItem("medtrack_referrals");
     localStorage.removeItem("medtrack_last_sync");
     localStorage.removeItem("medtrack_share_settings");
     localStorage.removeItem("medtrack_standard_fields");
@@ -203,7 +221,7 @@ const routes = {
   "#/dashboard": { view: "dashboardView", title: "Dashboard", permission: ["Rep", "Manager", "Admin"] },
   "#/leads": { view: "leadsView", title: "Leads", permission: ["Rep", "Manager", "Admin"] },
   "#/meetings": { view: "meetingsView", title: "Meetings List", permission: ["Rep", "Manager", "Admin"] },
-  "#/reports": { view: "reportsView", title: "Analytics Reports", permission: ["Manager", "Admin"] },
+  "#/referrals": { view: "referralsView", title: "Patient Referrals", permission: ["Rep", "Manager", "Admin"] },
   "#/admin": { view: "adminView", title: "Admin Panel", permission: ["Admin"] }
 };
 
@@ -271,9 +289,8 @@ function closeSheet(id) {
   const currentViewHash = window.location.hash.split("?")[0] || "#/dashboard";
   window.location.hash = currentViewHash;
 }
-
 function manageSheetsRouting(activeSheet, params) {
-  const sheets = ["leadFormSheet", "meetingFormSheet", "leadDetailSheet", "meetingDetailSheet", "fabSheet"];
+  const sheets = ["leadFormSheet", "meetingFormSheet", "leadDetailSheet", "meetingDetailSheet", "fabSheet", "referralFormSheet", "referralUpdateSheet"];
   
   sheets.forEach(sheetId => {
     const el = document.getElementById(sheetId);
@@ -310,11 +327,28 @@ function manageSheetsRouting(activeSheet, params) {
       populateLeadFormForAdd(defaultStatus);
     }
   } else if (activeSheet === "meetingFormSheet") {
-    populateMeetingForm(params.get("leadId"));
+    const leadId = params.get("leadId");
+    populateMeetingForm(leadId);
   } else if (activeSheet === "leadDetailSheet") {
-    renderLeadDetail(params.get("id"));
+    const leadId = params.get("id");
+    if (leadId) {
+      showLeadDetail(leadId);
+    }
   } else if (activeSheet === "meetingDetailSheet") {
-    renderMeetingDetail(params.get("id"));
+    const meetingId = params.get("id");
+    if (meetingId) {
+      showMeetingDetail(meetingId);
+    }
+  } else if (activeSheet === "referralFormSheet") {
+    populateReferralFormForAdd();
+  } else if (activeSheet === "referralUpdateSheet") {
+    const refId = params.get("id");
+    if (refId) {
+      const ref = db.getReferrals().find(r => r.referralId === refId);
+      if (ref) {
+        populateReferralUpdateForm(ref);
+      }
+    }
   }
 }
 
@@ -382,8 +416,8 @@ function initView(hash) {
     case "#/meetings":
       renderMeetingsList();
       break;
-    case "#/reports":
-      renderReports();
+    case "#/referrals":
+      renderReferralsList();
       break;
     case "#/admin":
       renderAdminPanel();
@@ -451,14 +485,98 @@ function logout() {
 }
 
 // --- DASHBOARD ACTIONS & CHARTS ---
+function populateDashboardFilters() {
+  const repSelect = document.getElementById("dashboardRepFilter");
+  if (!repSelect) return;
+  repSelect.innerHTML = "";
+  
+  if (currentUser.role === "Admin" || currentUser.role === "Manager") {
+    const optAll = document.createElement("option");
+    optAll.value = "All";
+    optAll.innerText = "All Representatives";
+    repSelect.appendChild(optAll);
+    
+    const users = db.getUsers().filter(u => u.active);
+    users.forEach(u => {
+      const opt = document.createElement("option");
+      opt.value = u.name;
+      opt.innerText = u.name;
+      repSelect.appendChild(opt);
+    });
+  } else {
+    const opt = document.createElement("option");
+    opt.value = currentUser.name;
+    opt.innerText = currentUser.name;
+    repSelect.appendChild(opt);
+  }
+}
+
+function handleDashboardFilterChange() {
+  const timeframe = document.getElementById("dashboardTimeframe").value;
+  const customInputs = document.getElementById("customDateRangeInputs");
+  if (customInputs) {
+    if (timeframe === "custom") {
+      customInputs.style.display = "flex";
+    } else {
+      customInputs.style.display = "none";
+    }
+  }
+  renderDashboard();
+}
+
+function matchDashboardTimeframe(dateStr) {
+  if (!dateStr) return false;
+  const itemDate = dateStr.split("T")[0];
+  
+  const timeframe = document.getElementById("dashboardTimeframe") ? document.getElementById("dashboardTimeframe").value : "all";
+  const d = new Date();
+  const todayStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  
+  if (timeframe === "today") {
+    return itemDate === todayStr;
+  } else if (timeframe === "yesterday") {
+    const y = new Date();
+    y.setDate(y.getDate() - 1);
+    const yesterdayStr = `${y.getFullYear()}-${String(y.getMonth() + 1).padStart(2, '0')}-${String(y.getDate()).padStart(2, '0')}`;
+    return itemDate === yesterdayStr;
+  } else if (timeframe === "custom") {
+    const startInput = document.getElementById("dashboardStartDate") ? document.getElementById("dashboardStartDate").value : "";
+    const endInput = document.getElementById("dashboardEndDate") ? document.getElementById("dashboardEndDate").value : "";
+    if (!startInput || !endInput) return true;
+    return itemDate >= startInput && itemDate <= endInput;
+  }
+  return true;
+}
+
 function renderDashboard() {
   const leads = db.getLeads();
   const meetings = db.getMeetings();
+  const referrals = db.getReferrals();
 
-  // Filters based on Role (Reps can only see their own leads unless manager/admin)
-  const repFilter = (item) => currentUser.role === "Rep" ? item.owner === currentUser.name : true;
+  // Populate dropdown once
+  const repSelect = document.getElementById("dashboardRepFilter");
+  if (repSelect && repSelect.children.length === 0) {
+    populateDashboardFilters();
+  }
+
+  let selectedRep = "All";
+  if (repSelect) {
+    selectedRep = repSelect.value || "All";
+  }
+  if (currentUser.role === "Rep") {
+    selectedRep = currentUser.name;
+  }
+
+  const repFilter = (item) => selectedRep === "All" ? true : item.owner === selectedRep;
+
   const filteredLeads = leads.filter(repFilter);
   const filteredMeetings = meetings.filter(repFilter);
+  const filteredReferrals = referrals.filter(repFilter);
+
+  // Timeframe filtered data subsets
+  const leadsInTimeframe = filteredLeads.filter(l => matchDashboardTimeframe(l.createdAt));
+  const meetingsInTimeframe = filteredMeetings.filter(m => matchDashboardTimeframe(m.createdAt || m.date));
+  const referralsInTimeframe = filteredReferrals.filter(r => matchDashboardTimeframe(r.createdAt || r.visitDate));
 
   // Metrics calculations
   const totalLeads = filteredLeads.length;
@@ -469,12 +587,7 @@ function renderDashboard() {
   const pendingFollowups = filteredLeads.filter(l => l.followup && l.followup <= todayStr && l.status !== "Converted" && l.status !== "Lost").length;
 
   const convertedLeads = filteredLeads.filter(l => l.status === "Converted").length;
-  const lostLeads = filteredLeads.filter(l => l.status === "Lost").length;
-
   const conversionRate = totalLeads ? Math.round((convertedLeads / totalLeads) * 100) : 0;
-  const lostRate = totalLeads ? Math.round((lostLeads / totalLeads) * 100) : 0;
-
-  const revenuePotential = filteredLeads.reduce((acc, l) => acc + (l.revenuePotential || 0), 0);
 
   // Bind Metrics UI
   document.getElementById("metricTotalLeads").innerText = totalLeads;
@@ -483,14 +596,54 @@ function renderDashboard() {
   document.getElementById("metricFollowups").innerText = pendingFollowups;
   document.getElementById("metricConversionRate").innerText = `${conversionRate}%`;
 
-  // Render Pipeline Funnel
-  renderFunnelChart(filteredLeads);
+  // Render Pipeline Funnel Charts
+  renderFunnelChart(leadsInTimeframe);
+  renderReferralsFunnelChart(referralsInTimeframe);
 
   // Render Rep Rankings Leaderboard (only meaningful for Admin/Manager)
   renderRepRanking(leads);
 
   // Render Lost Reasons Pie/Donut Chart
-  renderLostReasonsChart(filteredLeads);
+  renderLostReasonsChart(leadsInTimeframe);
+
+  // Render Timeframe Performance summary (Reports tab replacement at bottom)
+  const newLeadsTimeframe = leads.filter(repFilter).filter(l => matchDashboardTimeframe(l.createdAt)).length;
+  const meetingsTimeframe = meetings.filter(repFilter).filter(m => matchDashboardTimeframe(m.createdAt || m.date)).length;
+  const referralsTimeframe = referrals.filter(repFilter).filter(r => matchDashboardTimeframe(r.createdAt || r.visitDate)).length;
+  const acquiredValueTimeframe = leads.filter(repFilter).filter(l => l.status === "Converted" && matchDashboardTimeframe(l.updatedAt)).reduce((acc, l) => acc + (l.revenuePotential || 0), 0);
+
+  const repTotalNewLeadsEl = document.getElementById("repTotalNewLeads");
+  if (repTotalNewLeadsEl) {
+    repTotalNewLeadsEl.innerText = newLeadsTimeframe;
+    document.getElementById("repTotalMeetings").innerText = meetingsTimeframe;
+    document.getElementById("repTotalReferrals").innerText = referralsTimeframe;
+    document.getElementById("repTotalValue").innerText = `₹${acquiredValueTimeframe.toLocaleString()}`;
+  }
+
+  // Render Reports Conversion Table logs
+  const reportsConversionTable = document.getElementById("reportsConversionTable");
+  if (reportsConversionTable) {
+    reportsConversionTable.innerHTML = "";
+    const timeframeLeads = leads.filter(repFilter).filter(l => matchDashboardTimeframe(l.createdAt) || matchDashboardTimeframe(l.updatedAt));
+    
+    if (timeframeLeads.length === 0) {
+      reportsConversionTable.innerHTML = `<tr><td colspan="6" style="text-align:center; color:var(--text-muted); padding:16px;">No activity in this timeframe</td></tr>`;
+    } else {
+      timeframeLeads.forEach(lead => {
+        const count = meetings.filter(m => m.leadId === lead.leadId).length;
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+          <td style="font-weight:600; color:var(--primary);">${lead.organisation}</td>
+          <td>${lead.audienceType}</td>
+          <td>${lead.owner}</td>
+          <td><span class="record-badge badge-${lead.status.toLowerCase().replace(" ", "-")}">${lead.status}</span></td>
+          <td style="text-align:center;">${count}</td>
+          <td style="text-align:right; font-weight:600;">₹${(lead.revenuePotential || 0).toLocaleString()}</td>
+        `;
+        reportsConversionTable.appendChild(tr);
+      });
+    }
+  }
 }
 
 function renderFunnelChart(filteredLeads) {
@@ -502,9 +655,9 @@ function renderFunnelChart(filteredLeads) {
   ];
 
   const chartEl = document.getElementById("pipelineFunnelChart");
+  if (!chartEl) return;
   chartEl.innerHTML = "";
 
-  // Accumulate count from bottom-up for proper pipeline flow (Converted has converted count; Contacted has all)
   let count = 0;
   const counts = stages.map(stage => {
     if (stage.status === "Contacted") {
@@ -539,8 +692,49 @@ function renderFunnelChart(filteredLeads) {
   });
 }
 
+function renderReferralsFunnelChart(filteredReferrals) {
+  const total = filteredReferrals.length;
+  const reached = filteredReferrals.filter(r => r.reached === "Yes").length;
+  const ipd = filteredReferrals.filter(r => r.reached === "Yes" && r.reachedDetails?.ipd).length;
+  
+  const reachedRate = total ? Math.round((reached / total) * 100) : 0;
+  
+  const metricEl = document.getElementById("metricReferralReachedRate");
+  if (metricEl) {
+    metricEl.innerText = `${reachedRate}% Reached`;
+  }
+  
+  const stages = [
+    { label: "Total Referrals Logged", count: total },
+    { label: "Patients Reached Clinic", count: reached },
+    { label: "Inpatient Admissions (IPD)", count: ipd }
+  ];
+  
+  const chartEl = document.getElementById("referralsFunnelChart");
+  if (!chartEl) return;
+  chartEl.innerHTML = "";
+  
+  const maxCount = stages[0]?.count || 1;
+  
+  stages.forEach((item, index) => {
+    const widthPct = Math.max(30, Math.round((item.count / maxCount) * 100));
+    const opacity = 1 - (index * 0.15);
+    
+    const stageEl = document.createElement("div");
+    stageEl.className = "funnel-stage";
+    stageEl.style.width = `${widthPct}%`;
+    stageEl.style.backgroundColor = `rgba(245, 158, 11, ${opacity})`;
+    stageEl.style.alignSelf = "center";
+    
+    stageEl.innerHTML = `
+      <span class="funnel-stage-label">${item.label}</span>
+      <span class="funnel-stage-value">${item.count}</span>
+    `;
+    chartEl.appendChild(stageEl);
+  });
+}
+
 function renderRepRanking(allLeads) {
-  // Aggregate revenue and conversions by rep
   const repStats = {};
   allLeads.forEach(lead => {
     if (!repStats[lead.owner]) {
@@ -554,6 +748,7 @@ function renderRepRanking(allLeads) {
 
   const repsArray = Object.values(repStats).sort((a, b) => b.revenue - a.revenue);
   const container = document.getElementById("repRankingsChart");
+  if (!container) return;
   container.innerHTML = "";
 
   if (repsArray.length === 0) {
@@ -1058,6 +1253,16 @@ function submitLeadForm(e) {
     customFieldsData[fid] = input.type === "checkbox" ? input.checked : input.value;
   });
 
+  // Record edit logs inside Lead Custom Fields edits
+  const edits = selectedLead && selectedLead.customFields && selectedLead.customFields.edits ? [...selectedLead.customFields.edits] : [];
+  const actionText = selectedLead ? `Lead details updated (Status: ${status})` : `Lead created (Status: ${status})`;
+  edits.push({
+    timestamp: new Date().toISOString(),
+    user: currentUser.name,
+    action: actionText
+  });
+  customFieldsData.edits = edits;
+
   const leadData = {
     leadId,
     organisation: document.getElementById("leadOrg").value,
@@ -1210,12 +1415,13 @@ function renderLeadDetail(id) {
   document.getElementById("detailFollowup").innerText = lead.followup || "None Scheduled";
   document.getElementById("detailRevenue").innerText = `₹${lead.revenuePotential.toLocaleString()}`;
 
-  // Custom Fields render
+  // Custom Fields render (except edits system field)
   const customList = document.getElementById("detailCustomFields");
   customList.innerHTML = "";
   const registeredFields = db.getFormFields().filter(f => f.target === "lead");
   
   registeredFields.forEach(f => {
+    if (f.id === "edits") return;
     const val = lead.customFields?.[f.id] ?? "-";
     const li = document.createElement("li");
     li.style.display = "flex";
@@ -1227,29 +1433,65 @@ function renderLeadDetail(id) {
     customList.appendChild(li);
   });
 
-  // History timeline
+  // Combined History Timeline (Meetings, Referrals, and Edits)
   const timeline = document.getElementById("detailTimeline");
   timeline.innerHTML = "";
   const leadMeetings = db.getMeetings().filter(m => m.leadId === id);
+  const leadReferrals = db.getReferrals().filter(r => r.leadId === id);
+  const edits = lead.customFields?.edits || [];
 
-  if (leadMeetings.length === 0) {
+  const events = [];
+
+  leadMeetings.forEach(m => {
+    events.push({
+      timestamp: m.createdAt || m.date,
+      html: `
+        <div style="font-weight:600; color:var(--info);">[Meeting] ${m.purpose} - ${m.outcome}</div>
+        <div style="color:var(--text-muted); font-size:0.75rem;">Logged by ${m.owner} on ${m.date || m.createdAt.substring(0, 10)}</div>
+        <div style="margin-top:4px; font-style:italic;">"${m.notes}"</div>
+      `
+    });
+  });
+
+  leadReferrals.forEach(r => {
+    events.push({
+      timestamp: r.createdAt,
+      html: `
+        <div style="font-weight:600; color:var(--warning);">[Referral] Patient: ${r.patientName} (${r.reached || 'Pending'})</div>
+        <div style="color:var(--text-muted); font-size:0.75rem;">Created by ${r.owner} for expected visit on ${r.visitDate}</div>
+        ${r.reached === 'Yes' ? `<div style="font-size:0.8rem; margin-top:2px; color:var(--success);">Reached! Admission ID: ${r.admissionId || '-'}</div>` : ''}
+        ${r.remarks ? `<div style="margin-top:4px; font-style:italic;">"${r.remarks}"</div>` : ''}
+      `
+    });
+  });
+
+  edits.forEach(e => {
+    events.push({
+      timestamp: e.timestamp,
+      html: `
+        <div style="font-weight:600; color:var(--success);">[Edit] ${e.action}</div>
+        <div style="color:var(--text-muted); font-size:0.75rem;">Updated by ${e.user} on ${new Date(e.timestamp).toLocaleDateString()} ${new Date(e.timestamp).toLocaleTimeString()}</div>
+      `
+    });
+  });
+
+  // Sort chronologically (newest first)
+  events.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+
+  if (events.length === 0) {
     timeline.innerHTML = `<li style="font-size:0.85rem; color:var(--text-muted)">No activities logged for this lead yet.</li>`;
   } else {
-    leadMeetings.forEach(meeting => {
+    events.forEach(event => {
       const li = document.createElement("li");
       li.style.padding = "8px 0";
       li.style.fontSize = "0.85rem";
       li.style.borderBottom = "1px dotted var(--bg-app)";
-      li.innerHTML = `
-        <div style="font-weight:600; color:var(--primary);">${meeting.purpose} - ${meeting.outcome}</div>
-        <div style="color:var(--text-muted); font-size:0.75rem;">Logged by ${meeting.owner} on ${meeting.date}</div>
-        <div style="margin-top:4px; font-style:italic;">"${meeting.notes}"</div>
-      `;
+      li.innerHTML = event.html;
       timeline.appendChild(li);
     });
   }
 
-  // Edit controls display based on roles (reps can only edit their own leads)
+  // Edit controls display based on roles
   const editBtn = document.getElementById("leadDetailEditBtn");
   if (currentUser.role === "Rep" && lead.owner !== currentUser.name) {
     editBtn.style.display = "none";
@@ -1480,13 +1722,19 @@ function shareLeadAsImage() {
   ctx.fillText("Confidential CRM Record", 610, 470);
 
   // Parse share caption text
+  const leadLink = window.location.origin + window.location.pathname + `#/leads?id=${selectedLead.leadId}`;
   let caption = settings.captionText || "Check out the details for referral lead: {organisation}";
   caption = caption
     .replace(/{organisation}/g, selectedLead.organisation)
     .replace(/{poc1}/g, selectedLead.poc1 || "")
     .replace(/{status}/g, selectedLead.status || "")
     .replace(/{owner}/g, selectedLead.owner || "")
-    .replace(/{leadId}/g, selectedLead.leadId || "");
+    .replace(/{leadId}/g, selectedLead.leadId || "")
+    .replace(/{link}/g, leadLink);
+
+  if (!caption.includes(leadLink)) {
+    caption += `\nOpen Lead: ${leadLink}`;
+  }
 
   // Perform sharing or fallback
   canvas.toBlob(blob => {
@@ -1523,79 +1771,297 @@ function logMeetingForLeadShortcut() {
 }
 
 function matchTimeframe(dateStr) {
-  if (!dateStr) return false;
-  const itemDate = dateStr.split("T")[0];
-  const d = new Date();
-  const todayStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-  
-  if (activeReportsTimeframe === "today") {
-    return itemDate === todayStr;
-  } else if (activeReportsTimeframe === "yesterday") {
-    const y = new Date();
-    y.setDate(y.getDate() - 1);
-    const yesterdayStr = `${y.getFullYear()}-${String(y.getMonth() + 1).padStart(2, '0')}-${String(y.getDate()).padStart(2, '0')}`;
-    return itemDate === yesterdayStr;
-  }
-  return true; // "all"
+  return matchDashboardTimeframe(dateStr);
 }
 
-function setReportsTimeframe(timeframe) {
-  activeReportsTimeframe = timeframe;
-  document.querySelectorAll(".reports-filter-btn").forEach(btn => {
-    if (btn.getAttribute("data-timeframe") === timeframe) {
-      btn.classList.add("active");
-    } else {
-      btn.classList.remove("active");
-    }
-  });
-  renderReports();
+// --- NEW REFERRALS MODULE LOGIC ---
+let activeReferralFilter = "all";
+
+function setReferralFilter(filter, btn) {
+  activeReferralFilter = filter;
+  document.querySelectorAll(".referral-filter-btn").forEach(el => el.classList.remove("active"));
+  if (btn) btn.classList.add("active");
+  renderReferralsList();
 }
 
-function renderReports() {
+function renderReferralsList() {
+  const referrals = db.getReferrals();
   const leads = db.getLeads();
-  const meetings = db.getMeetings();
-
-  // Filter leads and meetings by timeframe
-  const filteredLeads = leads.filter(l => matchTimeframe(l.createdAt) || matchTimeframe(l.updatedAt));
-
-  // 1. Hospital Referral Conversion table
-  const tbody = document.getElementById("reportsConversionTable");
-  tbody.innerHTML = "";
-
-  if (filteredLeads.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; color:var(--text-muted); padding:16px;">No activity in this timeframe</td></tr>`;
-  } else {
-    filteredLeads.forEach(lead => {
-      const count = meetings.filter(m => m.leadId === lead.leadId).length;
-      const tr = document.createElement("tr");
-      tr.innerHTML = `
-        <td style="font-weight:600; color:var(--primary);">${lead.organisation}</td>
-        <td>${lead.audienceType}</td>
-        <td>${lead.owner}</td>
-        <td><span class="record-badge badge-${lead.status.toLowerCase().replace(" ", "-")}">${lead.status}</span></td>
-        <td style="text-align:center;">${count}</td>
-        <td style="text-align:right; font-weight:600;">₹${lead.revenuePotential.toLocaleString()}</td>
-      `;
-      tbody.appendChild(tr);
+  const searchVal = (document.getElementById("referralsSearchInput")?.value || "").replace(/\s+/g, "").toLowerCase();
+  
+  const ownerFilter = (r) => currentUser.role === "Rep" ? r.owner === currentUser.name : true;
+  const container = document.getElementById("referralsListContainer");
+  if (!container) return;
+  container.innerHTML = "";
+  
+  const filtered = referrals
+    .filter(ownerFilter)
+    .filter(r => {
+      const lead = leads.find(l => l.leadId === r.leadId);
+      const leadName = lead ? lead.organisation : "Unknown Lead";
+      
+      const cleanName = r.patientName.toLowerCase().replace(/\s+/g, "");
+      const cleanPhone = r.patientPhone.replace(/\s+/g, "");
+      const cleanLeadName = leadName.toLowerCase().replace(/\s+/g, "");
+      
+      const matchSearch = cleanName.includes(searchVal) || 
+                          cleanPhone.includes(searchVal) || 
+                          cleanLeadName.includes(searchVal);
+                          
+      let matchStatus = true;
+      if (activeReferralFilter === "reached") {
+        matchStatus = r.reached === "Yes";
+      } else if (activeReferralFilter === "pending") {
+        matchStatus = r.reached === "Pending" || !r.reached;
+      } else if (activeReferralFilter === "not_reached") {
+        matchStatus = r.reached === "No";
+      }
+      
+      return matchSearch && matchStatus;
     });
+    
+  if (filtered.length === 0) {
+    container.innerHTML = `<div style="text-align:center; color:var(--text-muted); padding:32px 0;">No referrals found. Tap the '+' button to log a referral.</div>`;
+    return;
   }
+  
+  filtered.forEach(r => {
+    const lead = leads.find(l => l.leadId === r.leadId);
+    const leadName = lead ? lead.organisation : "Unknown Lead";
+    
+    const card = document.createElement("div");
+    card.className = "record-card glass";
+    card.onclick = () => showReferralDetail(r.referralId);
+    
+    let statusClass = "badge-postponed"; // orange
+    if (r.reached === "Yes") statusClass = "badge-converted"; // green
+    if (r.reached === "No") statusClass = "badge-lost"; // red
+    
+    let detailsHtml = "";
+    if (r.reached === "Yes") {
+      const services = [];
+      if (r.reachedDetails?.opd) services.push("OPD");
+      if (r.reachedDetails?.ipd) services.push("IPD");
+      if (r.reachedDetails?.investigations) services.push("Labs");
+      if (r.reachedDetails?.medicines) services.push("Pharmacy");
+      if (r.reachedDetails?.consultation) services.push("Consult");
+      if (r.reachedDetails?.receptionEnquiry) services.push("Enquiry");
+      
+      detailsHtml = `
+        <div style="font-size:0.8rem; margin-top:6px; color:var(--success);">
+          <strong>Services:</strong> ${services.join(", ") || "None"}
+          ${r.admissionId ? `<br><strong>Adm ID:</strong> ${r.admissionId}` : ""}
+        </div>
+      `;
+    } else if (r.reached === "No") {
+      detailsHtml = `
+        <div style="font-size:0.8rem; margin-top:6px; color:var(--danger);">
+          <strong>Reason:</strong> ${r.remarks || "No remark provided"}
+        </div>
+      `;
+    } else {
+      detailsHtml = `
+        <div style="font-size:0.8rem; margin-top:6px; color:var(--text-muted);">
+          <strong>Note:</strong> ${r.remarks || "Patient expected to visit"}
+        </div>
+      `;
+    }
+    
+    card.innerHTML = `
+      <div class="record-header">
+        <div class="record-title" style="font-size: 1rem; font-weight:700;">Patient: ${r.patientName}</div>
+        <div class="record-badge ${statusClass}">${r.reached || "Pending"}</div>
+      </div>
+      <div class="record-details" style="margin-top: 8px; border-top: 1px solid rgba(255,255,255,0.05); padding-top: 6px;">
+        <div class="record-detail-item">
+          <strong>Hospital:</strong> ${leadName}
+        </div>
+        <div class="record-detail-item">
+          <strong>Phone:</strong> ${r.patientPhone}
+        </div>
+        <div class="record-detail-item">
+          <strong>Expected Visit:</strong> ${r.visitDate}
+        </div>
+        ${detailsHtml}
+      </div>
+      <div class="record-footer" style="margin-top: 8px;">
+        <div class="record-owner">
+          <div class="record-owner-avatar">${r.owner[0]}</div>
+          <span>Logged by: ${r.owner}</span>
+        </div>
+      </div>
+    `;
+    container.appendChild(card);
+  });
+}
 
-  // 2. Aggregate statistics calculations
-  const newLeadsCount = leads.filter(l => matchTimeframe(l.createdAt)).length;
-  const meetingsCount = meetings.filter(m => matchTimeframe(m.createdAt)).length;
-  const referralsAddedCount = leads.filter(l => 
-    (l.status === "Referral Started" || l.status === "Converted") && 
-    (matchTimeframe(l.createdAt) || matchTimeframe(l.updatedAt))
-  ).length;
-  const acquiredValue = leads.filter(l => 
-    l.status === "Converted" && 
-    (matchTimeframe(l.createdAt) || matchTimeframe(l.updatedAt))
-  ).reduce((acc, l) => acc + (l.revenuePotential || 0), 0);
+function showReferralDetail(id) {
+  showSheet("referralUpdateSheet", { id });
+}
 
-  document.getElementById("repTotalNewLeads").innerText = newLeadsCount;
-  document.getElementById("repTotalMeetings").innerText = meetingsCount;
-  document.getElementById("repTotalReferrals").innerText = referralsAddedCount;
-  document.getElementById("repTotalValue").innerText = `₹${acquiredValue.toLocaleString()}`;
+function populateReferralFormForAdd() {
+  const select = document.getElementById("referralLeadId");
+  if (!select) return;
+  select.innerHTML = '<option value="">-- Select Hospital Lead --</option>';
+  
+  const leads = db.getLeads().filter(l => currentUser.role === "Rep" ? l.owner === currentUser.name : true);
+  leads.forEach(l => {
+    const opt = document.createElement("option");
+    opt.value = l.leadId;
+    opt.innerText = l.organisation;
+    select.appendChild(opt);
+  });
+  
+  document.getElementById("refPatientName").value = "";
+  document.getElementById("refPatientPhone").value = "";
+  document.getElementById("refVisitDate").value = new Date().toISOString().split("T")[0];
+  document.getElementById("refRemarks").value = "";
+}
+
+function setRefDateQuick(type) {
+  const input = document.getElementById("refVisitDate");
+  if (!input) return;
+  const d = new Date();
+  if (type === "tomorrow") {
+    d.setDate(d.getDate() + 1);
+  }
+  input.value = d.toISOString().split("T")[0];
+}
+
+function submitReferralForm(e) {
+  e.preventDefault();
+  
+  const leadId = document.getElementById("referralLeadId").value;
+  const name = document.getElementById("refPatientName").value.trim();
+  const phone = document.getElementById("refPatientPhone").value.trim();
+  const visitDate = document.getElementById("refVisitDate").value;
+  const remarks = document.getElementById("refRemarks").value.trim();
+  
+  if (!leadId || !name || !phone || !visitDate) {
+    showToast("Please fill all required fields", "warning");
+    return;
+  }
+  
+  const newRef = {
+    referralId: "R-" + Date.now(),
+    leadId,
+    patientName: name,
+    patientPhone: phone,
+    visitDate,
+    remarks,
+    reached: "Pending",
+    reachedDetails: null,
+    admissionId: "",
+    owner: currentUser.name,
+    archived: false
+  };
+  
+  db.saveReferral(newRef);
+  showToast("Patient referral logged successfully!", "success");
+  closeSheet("referralFormSheet");
+  
+  triggerSync(true);
+  
+  if (window.location.hash.startsWith("#/referrals")) {
+    renderReferralsList();
+  } else if (window.location.hash.startsWith("#/dashboard")) {
+    renderDashboard();
+  }
+}
+
+function populateReferralUpdateForm(ref) {
+  const leads = db.getLeads();
+  const lead = leads.find(l => l.leadId === ref.leadId);
+  const leadName = lead ? lead.organisation : "Unknown Lead";
+  
+  document.getElementById("refUpdateId").value = ref.referralId;
+  document.getElementById("refUpdateReached").value = ref.reached || "";
+  
+  document.getElementById("refUpdateDetailsDisplay").innerHTML = `
+    <strong>Patient:</strong> ${ref.patientName} (${ref.patientPhone})<br>
+    <strong>Hospital:</strong> ${leadName}<br>
+    <strong>Visit Scheduled:</strong> ${ref.visitDate}<br>
+    <strong>Creation Notes:</strong> ${ref.remarks || "-"}
+  `;
+  
+  document.getElementById("refServiceOpd").checked = !!ref.reachedDetails?.opd;
+  document.getElementById("refServiceIpd").checked = !!ref.reachedDetails?.ipd;
+  document.getElementById("refServiceInvestigations").checked = !!ref.reachedDetails?.investigations;
+  document.getElementById("refServiceMedicines").checked = !!ref.reachedDetails?.medicines;
+  document.getElementById("refServiceConsultation").checked = !!ref.reachedDetails?.consultation;
+  document.getElementById("refServiceReception").checked = !!ref.reachedDetails?.receptionEnquiry;
+  document.getElementById("refUpdateAdmissionId").value = ref.admissionId || "";
+  document.getElementById("refUpdateNotReachedRemarks").value = ref.reached === "No" ? ref.remarks || "" : "";
+  
+  toggleReferralStatusBoxes();
+}
+
+function toggleReferralStatusBoxes() {
+  const reached = document.getElementById("refUpdateReached").value;
+  const reachedBox = document.getElementById("refReachedBox");
+  const notReachedBox = document.getElementById("refNotReachedBox");
+  
+  if (reached === "Yes") {
+    reachedBox.style.display = "flex";
+    notReachedBox.style.display = "none";
+  } else if (reached === "No") {
+    reachedBox.style.display = "none";
+    notReachedBox.style.display = "flex";
+  } else {
+    reachedBox.style.display = "none";
+    notReachedBox.style.display = "none";
+  }
+}
+
+function submitReferralUpdateForm(e) {
+  e.preventDefault();
+  
+  const refId = document.getElementById("refUpdateId").value;
+  const reached = document.getElementById("refUpdateReached").value;
+  
+  if (!refId || !reached) {
+    showToast("Please select a status", "warning");
+    return;
+  }
+  
+  const referrals = db.getReferrals();
+  const ref = referrals.find(r => r.referralId === refId);
+  if (!ref) {
+    showToast("Referral not found", "error");
+    return;
+  }
+  
+  ref.reached = reached;
+  
+  if (reached === "Yes") {
+    ref.reachedDetails = {
+      opd: document.getElementById("refServiceOpd").checked,
+      ipd: document.getElementById("refServiceIpd").checked,
+      investigations: document.getElementById("refServiceInvestigations").checked,
+      medicines: document.getElementById("refServiceMedicines").checked,
+      consultation: document.getElementById("refServiceConsultation").checked,
+      receptionEnquiry: document.getElementById("refServiceReception").checked
+    };
+    ref.admissionId = document.getElementById("refUpdateAdmissionId").value.trim();
+  } else if (reached === "No") {
+    ref.reachedDetails = null;
+    ref.admissionId = "";
+    ref.remarks = document.getElementById("refUpdateNotReachedRemarks").value.trim();
+  }
+  
+  ref.updatedAt = new Date().toISOString();
+  db.saveReferral(ref);
+  
+  showToast("Referral status updated successfully!", "success");
+  closeSheet("referralUpdateSheet");
+  
+  triggerSync(true);
+  
+  if (window.location.hash.startsWith("#/referrals")) {
+    renderReferralsList();
+  } else if (window.location.hash.startsWith("#/dashboard")) {
+    renderDashboard();
+  }
 }
 
 // --- ADMIN PANEL AND DYNAMIC FORMS CONFIG ---
@@ -2007,7 +2473,8 @@ async function triggerSync(isSilent = false) {
     config: db.getConfig(),
     formFields: db.getFormFields(),
     leads: db.get("leads"), // Include archived elements to trigger server-side archives
-    meetings: db.get("meetings")
+    meetings: db.get("meetings"),
+    referrals: db.get("referrals")
   };
 
   try {
@@ -2029,6 +2496,7 @@ async function triggerSync(isSilent = false) {
       if (serverData.formFields) db.set("form_fields", serverData.formFields);
       if (serverData.leads) db.set("leads", serverData.leads);
       if (serverData.meetings) db.set("meetings", serverData.meetings);
+      if (serverData.referrals) db.set("referrals", serverData.referrals);
 
       const timestamp = new Date().toLocaleString();
       localStorage.setItem("medtrack_last_sync", timestamp);
@@ -2081,7 +2549,7 @@ function toggleFabMenu() {
 function handleFabItemClick(action) {
   toggleFabMenu();
   if (action === "addReferral") {
-    showSheet("leadFormSheet", { defaultStatus: "Referral Started" });
+    showSheet("referralFormSheet");
   } else if (action === "addLead") {
     showSheet("leadFormSheet");
   } else if (action === "addMeeting") {
@@ -2141,6 +2609,8 @@ window.addEventListener("load", () => {
   // Bind forms submit actions
   document.getElementById("leadFormEl").addEventListener("submit", submitLeadForm);
   document.getElementById("meetingFormEl").addEventListener("submit", submitMeetingForm);
+  document.getElementById("referralFormEl").addEventListener("submit", submitReferralForm);
+  document.getElementById("referralUpdateFormEl").addEventListener("submit", submitReferralUpdateForm);
 
   // Start background auto sync timer
   startAutoSyncTimer();
