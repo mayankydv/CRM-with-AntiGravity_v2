@@ -6,7 +6,7 @@
   --primary-glow: rgba(15, 76, 97, 0.15);
   --bg-app: #f4f7f9;
   --card-bg: rgba(255, 255, 255, 0.85);
-  --card-border: rgba(255, 255, 255, 0.4);
+  --card-border: rgba(15, 76, 97, 0.16);
   --text-main: #1e293b;
   --text-muted: #64748b;
   --success: #10b981;
@@ -599,15 +599,17 @@ body {
 .funnel-stage {
   display: flex;
   align-items: center;
-  height: 36px;
+  min-height: 38px;
+  height: auto;
   color: white;
-  font-size: 0.75rem;
+  font-size: 0.78rem;
   font-weight: 600;
   border-radius: var(--radius-sm);
-  padding: 0 12px;
+  padding: 6px 12px;
   position: relative;
-  overflow: hidden;
   transition: var(--transition);
+  white-space: normal;
+  word-break: break-word;
 }
 
 .funnel-stage-label {
@@ -1291,5 +1293,21 @@ textarea.form-control {
   
   .fab-sheet.show .fab-menu-content {
     transform: translateY(0);
+  }
+}
+
+@media (max-width: 767px) {
+  #currentUserLabel {
+    display: none !important;
+  }
+  .app-header {
+    padding: 10px 14px;
+  }
+  .app-logo span {
+    font-size: 1.1rem;
+  }
+  .sync-badge {
+    padding: 5px 10px;
+    font-size: 0.7rem;
   }
 }

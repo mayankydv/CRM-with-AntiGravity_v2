@@ -675,7 +675,7 @@ function renderFunnelChart(filteredLeads) {
   const maxCount = counts[0]?.count || 1;
 
   counts.forEach((item, index) => {
-    const widthPct = Math.max(30, Math.round((item.count / maxCount) * 100));
+    const widthPct = Math.max(60, Math.round((item.count / maxCount) * 100));
     const opacity = 1 - (index * 0.15);
     
     const stageEl = document.createElement("div");
@@ -717,7 +717,7 @@ function renderReferralsFunnelChart(filteredReferrals) {
   const maxCount = stages[0]?.count || 1;
   
   stages.forEach((item, index) => {
-    const widthPct = Math.max(30, Math.round((item.count / maxCount) * 100));
+    const widthPct = Math.max(60, Math.round((item.count / maxCount) * 100));
     const opacity = 1 - (index * 0.15);
     
     const stageEl = document.createElement("div");
@@ -1044,6 +1044,8 @@ function populateLeadFormForAdd(defaultStatus = null) {
   document.getElementById("leadPoc2").value = "";
   document.getElementById("leadRevenue").value = "";
   document.getElementById("leadFollowup").value = "";
+  document.getElementById("leadGps").value = "";
+  document.getElementById("leadGpsCoordsDisplay").innerText = "Tap button below to capture";
   
   // Populate dropdowns from dynamic configuration
   populateDropdown("leadAudience", db.getConfig().audienceTypes);
@@ -1084,6 +1086,8 @@ function populateLeadFormForEdit(lead) {
   document.getElementById("leadPoc2").value = lead.poc2 || "";
   document.getElementById("leadRevenue").value = lead.revenuePotential;
   document.getElementById("leadFollowup").value = lead.followup || "";
+  document.getElementById("leadGps").value = lead.gps || "";
+  document.getElementById("leadGpsCoordsDisplay").innerText = lead.gps ? `Captured: ${lead.gps}` : "Coordinates not captured";
 
   populateDropdown("leadAudience", db.getConfig().audienceTypes);
   document.getElementById("leadAudience").value = lead.audienceType;
@@ -1270,6 +1274,7 @@ function submitLeadForm(e) {
     poc2: document.getElementById("leadPoc2").value,
     audienceType: document.getElementById("leadAudience").value,
     owner: selectedLead ? selectedLead.owner : currentUser.name,
+    gps: document.getElementById("leadGps").value,
     status,
     followup: document.getElementById("leadFollowup").value,
     revenuePotential: parseFloat(document.getElementById("leadRevenue").value) || 0,
@@ -1338,6 +1343,25 @@ function submitMeetingForm(e) {
   renderDashboard();
 }
 
+// Reverse Geocoding via OpenStreetMap Nominatim
+async function reverseGeocode(lat, lng) {
+  try {
+    const response = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1`, {
+      headers: { "Accept-Language": "en" }
+    });
+    if (!response.ok) return null;
+    const data = await response.json();
+    if (data && data.address) {
+      const addr = data.address;
+      // Get city or village name only (checking village, town, city, suburb, neighbourhood, county)
+      return addr.village || addr.town || addr.city || addr.suburb || addr.neighbourhood || addr.county || addr.city_district || null;
+    }
+  } catch (err) {
+    console.error("Reverse geocoding error: ", err);
+  }
+  return null;
+}
+
 // Geolocation simulator
 function captureGps() {
   const display = document.getElementById("gpsCoordsDisplay");
@@ -1347,19 +1371,85 @@ function captureGps() {
 
   if (navigator.geolocation) {
     navigator.geolocation.getCurrentPosition(
-      (pos) => {
+      async (pos) => {
         const lat = pos.coords.latitude.toFixed(5);
         const lng = pos.coords.longitude.toFixed(5);
-        input.value = `${lat}, ${lng}`;
-        display.innerText = `Captured: ${lat}, ${lng} (Accuracy: ${pos.coords.accuracy.toFixed(1)}m)`;
+        
+        display.innerText = `Captured: ${lat}, ${lng}. Resolving city name...`;
+        
+        let displayVal = `${lat}, ${lng}`;
+        if (navigator.onLine) {
+          const place = await reverseGeocode(lat, lng);
+          if (place) displayVal = `${lat}, ${lng} (${place})`;
+        }
+        
+        input.value = displayVal;
+        display.innerText = `GPS Location: ${displayVal} (Accuracy: ${pos.coords.accuracy.toFixed(1)}m)`;
         showToast("GPS location secured!", "info");
       },
-      (err) => {
+      async (err) => {
         // Fallback for demo simulation (since GitHub Pages / local file might block GPS)
         const simLat = (23.33 + (Math.random() - 0.5) * 0.05).toFixed(5);
         const simLng = (75.03 + (Math.random() - 0.5) * 0.05).toFixed(5);
-        input.value = `${simLat}, ${simLng}`;
-        display.innerText = `Simulated GPS: ${simLat}, ${simLng} (Local permission fallback)`;
+        
+        display.innerText = `Simulating GPS: ${simLat}, ${simLng}. Resolving city name...`;
+        
+        let displayVal = `${simLat}, ${simLng}`;
+        if (navigator.onLine) {
+          const place = await reverseGeocode(simLat, simLng);
+          if (place) displayVal = `${simLat}, ${simLng} (${place})`;
+        }
+        
+        input.value = displayVal;
+        display.innerText = `Simulated GPS: ${displayVal} (Local permission fallback)`;
+        showToast("Simulated GPS captured", "warning");
+      },
+      { timeout: 5000, enableHighAccuracy: true }
+    );
+  } else {
+    display.innerText = "GPS Not supported on this device";
+  }
+}
+
+function captureLeadGps() {
+  const display = document.getElementById("leadGpsCoordsDisplay");
+  const input = document.getElementById("leadGps");
+
+  display.innerText = "Accessing GPS...";
+
+  if (navigator.geolocation) {
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        const lat = pos.coords.latitude.toFixed(5);
+        const lng = pos.coords.longitude.toFixed(5);
+        
+        display.innerText = `Captured: ${lat}, ${lng}. Resolving city name...`;
+        
+        let displayVal = `${lat}, ${lng}`;
+        if (navigator.onLine) {
+          const place = await reverseGeocode(lat, lng);
+          if (place) displayVal = `${lat}, ${lng} (${place})`;
+        }
+        
+        input.value = displayVal;
+        display.innerText = `GPS Location: ${displayVal} (Accuracy: ${pos.coords.accuracy.toFixed(1)}m)`;
+        showToast("GPS location secured!", "info");
+      },
+      async (err) => {
+        // Fallback for demo simulation (since GitHub Pages / local file might block GPS)
+        const simLat = (23.33 + (Math.random() - 0.5) * 0.05).toFixed(5);
+        const simLng = (75.03 + (Math.random() - 0.5) * 0.05).toFixed(5);
+        
+        display.innerText = `Simulating GPS: ${simLat}, ${simLng}. Resolving city name...`;
+        
+        let displayVal = `${simLat}, ${simLng}`;
+        if (navigator.onLine) {
+          const place = await reverseGeocode(simLat, simLng);
+          if (place) displayVal = `${simLat}, ${simLng} (${place})`;
+        }
+        
+        input.value = displayVal;
+        display.innerText = `Simulated GPS: ${displayVal} (Local permission fallback)`;
         showToast("Simulated GPS captured", "warning");
       },
       { timeout: 5000, enableHighAccuracy: true }
@@ -1412,6 +1502,7 @@ function renderLeadDetail(id) {
   document.getElementById("detailOwner").innerText = lead.owner;
   document.getElementById("detailPoc1").innerText = lead.poc1;
   document.getElementById("detailPoc2").innerText = lead.poc2 || "-";
+  document.getElementById("detailGps").innerText = lead.gps || "None Captured";
   document.getElementById("detailFollowup").innerText = lead.followup || "None Scheduled";
   document.getElementById("detailRevenue").innerText = `₹${lead.revenuePotential.toLocaleString()}`;
 

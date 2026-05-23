@@ -672,6 +672,16 @@
             <label id="lbl_leadFollowup" class="form-label">Next Action Date</label>
             <input type="date" id="leadFollowup" class="form-control">
           </div>
+
+        <!-- GPS Location Component -->
+        <div class="form-group" style="margin-top: 4px;">
+          <label class="form-label">Establishment GPS Location</label>
+          <input type="hidden" id="leadGps">
+          <div class="gps-capture-box">
+            <span id="leadGpsCoordsDisplay" class="gps-coords">Coordinates not captured</span>
+            <button type="button" class="btn btn-secondary" style="height:36px; font-size:0.8rem; width:auto; padding: 0 16px;" onclick="captureLeadGps()">Capture GPS Location</button>
+          </div>
+        </div>
         </div>
 
         <!-- Section for Lost Lead fields -->
@@ -794,6 +804,10 @@
           <li style="display:flex; justify-content:space-between; font-size:0.85rem; border-bottom: 1px solid var(--bg-app); padding:4px 0;">
             <span style="color:var(--text-muted)">Secondary Contact:</span>
             <span style="font-weight:600;" id="detailPoc2">-</span>
+          </li>
+          <li style="display:flex; justify-content:space-between; font-size:0.85rem; border-bottom: 1px solid var(--bg-app); padding:4px 0;">
+            <span style="color:var(--text-muted)">GPS Coordinates:</span>
+            <span style="font-weight:600;" id="detailGps">None Captured</span>
           </li>
           <li style="display:flex; justify-content:space-between; font-size:0.85rem; border-bottom: 1px solid var(--bg-app); padding:4px 0;">
             <span style="color:var(--text-muted)">Next Follow-up Due:</span>

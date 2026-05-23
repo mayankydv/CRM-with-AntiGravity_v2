@@ -7,7 +7,7 @@
 // Global Sheet Configuration
 const SHEET_SCHEMAS = {
   Users: ["Name", "PIN", "Role", "Active"],
-  Leads: ["LeadID", "Organisation", "POC1", "POC2", "AudienceType", "Owner", "Status", "Followup", "RevenuePotential", "NonConversionReason", "NonConversionAction", "CreatedAt", "UpdatedAt", "Archived", "CustomFields"],
+  Leads: ["LeadID", "Organisation", "POC1", "POC2", "AudienceType", "Owner", "GPS", "Status", "Followup", "RevenuePotential", "NonConversionReason", "NonConversionAction", "CreatedAt", "UpdatedAt", "Archived", "CustomFields"],
   Meetings: ["MeetingID", "LeadID", "Purpose", "Notes", "Outcome", "Owner", "GPS", "Date", "Followup", "CreatedAt", "Archived", "Photo", "CustomFields"],
   Referrals: ["ReferralID", "LeadID", "PatientName", "PatientPhone", "VisitDate", "Reached", "OPD", "IPD", "Investigations", "Medicines", "Consultation", "ReceptionEnquiry", "AdmissionID", "Remarks", "Owner", "CreatedAt", "UpdatedAt", "Archived"],
   Config: ["ConfigKey", "ConfigValue"],
