@@ -64,10 +64,7 @@ function doPost(e) {
  */
 function jsonResponse(obj) {
   return ContentService.createTextOutput(JSON.stringify(obj))
-    .setMimeType(ContentService.MimeType.JSON)
-    .setHeader("Access-Control-Allow-Origin", "*")
-    .setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-    .setHeader("Access-Control-Allow-Headers", "Content-Type");
+    .setMimeType(ContentService.MimeType.JSON);
 }
 
 /**
@@ -338,5 +335,12 @@ function camelCase(str) {
   if (str === "MeetingID") return "meetingId";
   if (str === "ReferralID") return "referralId";
   if (str === "AdmissionID") return "admissionId";
+  if (str === "POC1") return "poc1";
+  if (str === "POC2") return "poc2";
+  if (str === "GPS") return "gps";
+  if (str === "OPD") return "opd";
+  if (str === "IPD") return "ipd";
+  if (str === "PIN") return "pin";
+  if (str === "ID") return "id";
   return str.charAt(0).toLowerCase() + str.slice(1);
 }

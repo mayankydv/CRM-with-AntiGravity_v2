@@ -868,10 +868,10 @@ function renderLeadsList() {
     .filter(ownerFilter)
     .filter(lead => {
       const cleanSearchVal = searchVal.replace(/\s+/g, "").toLowerCase();
-      const cleanOrg = lead.organisation.toLowerCase().replace(/\s+/g, "");
-      const cleanPoc1 = lead.poc1.toLowerCase().replace(/\s+/g, "");
+      const cleanOrg = (lead.organisation || "").toLowerCase().replace(/\s+/g, "");
+      const cleanPoc1 = (lead.poc1 || "").toLowerCase().replace(/\s+/g, "");
       const cleanPoc2 = (lead.poc2 || "").toLowerCase().replace(/\s+/g, "");
-      const cleanOwner = lead.owner.toLowerCase().replace(/\s+/g, "");
+      const cleanOwner = (lead.owner || "").toLowerCase().replace(/\s+/g, "");
 
       const matchSearch = cleanOrg.includes(cleanSearchVal) || 
                           cleanPoc1.includes(cleanSearchVal) ||
@@ -896,21 +896,21 @@ function renderLeadsList() {
     card.className = "record-card glass";
     card.onclick = () => showLeadDetail(lead.leadId);
 
-    const statusBadgeClass = `badge-${lead.status.toLowerCase().replace(" ", "-")}`;
+    const statusBadgeClass = `badge-${(lead.status || "contacted").toLowerCase().replace(" ", "-")}`;
     
     // Extract name before parenthesis
-    const displayName = lead.poc1.split("(")[0].trim();
+    const displayName = (lead.poc1 || "").split("(")[0].trim();
     const truncatedName = displayName.length > 25 ? displayName.substring(0, 22) + "..." : displayName;
 
     card.innerHTML = `
       <div class="record-header">
-        <div class="record-title">${lead.organisation}</div>
-        <div class="record-badge ${statusBadgeClass}">${lead.status}</div>
+        <div class="record-title">${lead.organisation || "Unnamed Organisation"}</div>
+        <div class="record-badge ${statusBadgeClass}">${lead.status || "Contacted"}</div>
       </div>
       <div class="record-details">
         <div class="record-detail-item">
           <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"></circle><path d="M16 8v5a3 3 0 0 0 6 0v-1a10 10 0 1 0-3.92 7.94"></path></svg>
-          <span>${truncatedName}</span>
+          <span>${truncatedName || "-"}</span>
         </div>
         <div class="record-detail-item">
           <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
@@ -2513,7 +2513,9 @@ async function triggerSync(isSilent = false) {
     }
   } catch (error) {
     console.error("Sync error: ", error);
-    if (!isSilent) showToast("Sync failed. Check API URL and permissions.", "error");
+    if (!isSilent) {
+      showToast("Sync failed: " + error.toString(), "error");
+    }
     
     badge.classList.remove("syncing");
     badge.classList.add("offline");
