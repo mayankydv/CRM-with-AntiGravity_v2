@@ -2480,15 +2480,12 @@ async function triggerSync(isSilent = false) {
   try {
     const response = await fetch(settings.url, {
       method: "POST",
-      mode: "no-cors", // Required for redirection in GAS execution contexts
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload)
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify(payload),
+      redirect: "follow"
     });
 
-    // Note: 'no-cors' resolves successfully but opaque response is returned. 
-    // We will attempt a GET call to load the merged values back from the Google Apps Script.
-    const getRes = await fetch(`${settings.url}?action=getData`);
-    const serverData = await getRes.json();
+    const serverData = await response.json();
 
     if (serverData && serverData.success) {
       if (serverData.users) db.set("users", serverData.users);
