@@ -2669,6 +2669,9 @@ function renderAdminForms() {
         </span>
       </td>
       <td>
+        <button class="action-icon-btn edit" style="background:var(--primary-glow); color:var(--primary); margin-right:6px;" onclick="editCustField(${idx})">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 1 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+        </button>
         <button class="action-icon-btn delete" onclick="deleteFormField(${idx})">
           <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
         </button>
@@ -2747,6 +2750,66 @@ function deleteFormField(idx) {
     showToast("Dynamic field deleted", "info");
     renderAdminForms();
   }
+}
+
+let editingCustFieldIdx = null;
+
+function editCustField(idx) {
+  const fields = db.getFormFields();
+  const field = fields[idx];
+  if (!field) return;
+
+  editingCustFieldIdx = idx;
+  document.getElementById("editCustFieldId").innerText = field.id;
+  document.getElementById("editCustLabel").value = field.label;
+  document.getElementById("editCustMandatory").checked = field.mandatory;
+  
+  const optionsGroup = document.getElementById("editCustOptionsGroup");
+  if (field.type === "dropdown" || field.type === "radio") {
+    optionsGroup.style.display = "block";
+    document.getElementById("editCustOptions").value = (field.options || []).join(", ");
+  } else {
+    optionsGroup.style.display = "none";
+    document.getElementById("editCustOptions").value = "";
+  }
+
+  document.getElementById("customFieldEditor").style.display = "block";
+  document.getElementById("customFieldEditor").scrollIntoView({ behavior: 'smooth' });
+}
+
+function cancelCustFieldEdit() {
+  editingCustFieldIdx = null;
+  document.getElementById("customFieldEditor").style.display = "none";
+}
+
+function saveCustFieldChange() {
+  if (editingCustFieldIdx === null) return;
+
+  const fields = db.getFormFields();
+  const field = fields[editingCustFieldIdx];
+  if (!field) return;
+
+  const newLabel = document.getElementById("editCustLabel").value.trim();
+  const newMandatory = document.getElementById("editCustMandatory").checked;
+  const rawOptions = document.getElementById("editCustOptions").value;
+
+  if (!newLabel) {
+    showToast("Field label cannot be empty", "error");
+    return;
+  }
+
+  field.label = newLabel;
+  field.mandatory = newMandatory;
+
+  if (field.type === "dropdown" || field.type === "radio") {
+    field.options = rawOptions.split(",").map(o => o.trim()).filter(o => o.length > 0);
+  }
+
+  db.saveFormFields(fields);
+  showToast("Custom field updated successfully!", "success");
+  
+  cancelCustFieldEdit();
+  renderAdminForms();
 }
 
 // 4. Synchronization panel

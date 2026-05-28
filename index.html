@@ -477,6 +477,29 @@
         </div>
       </form>
 
+      <!-- Editor for Custom Field (Hidden by default) -->
+      <div id="customFieldEditor" style="display: none; background: var(--bg-app); padding: 16px; border-radius: var(--radius-md); margin-bottom: 16px; border: 1px solid var(--card-border);">
+        <h5 style="color: var(--primary); margin-bottom: 8px;">Edit Custom Field: <span id="editCustFieldId" style="color: var(--text-muted); font-weight: bold;"></span></h5>
+        <div class="form-grid" style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-bottom: 12px;">
+          <div class="form-group" style="grid-column: span 2;">
+            <label class="form-label">Field Label (Displayed on Form)</label>
+            <input type="text" id="editCustLabel" class="form-control" required>
+          </div>
+          <div class="form-group" style="grid-column: span 2; display: none;" id="editCustOptionsGroup">
+            <label class="form-label">Field Options (Comma-separated options)</label>
+            <input type="text" id="editCustOptions" class="form-control" placeholder="Option 1, Option 2">
+          </div>
+          <div class="form-group" style="grid-column: span 2; display: flex; align-items: center; gap: 8px;">
+            <input type="checkbox" id="editCustMandatory">
+            <label class="form-label" style="margin: 0;">Mandatory (Required Field)</label>
+          </div>
+        </div>
+        <div style="display: flex; gap: 10px;">
+          <button type="button" class="btn btn-primary" onclick="saveCustFieldChange()" style="flex: 1; height: 38px; font-size: 0.85rem;">Save Changes</button>
+          <button type="button" class="btn btn-secondary" onclick="cancelCustFieldEdit()" style="flex: 1; height: 38px; font-size: 0.85rem;">Cancel</button>
+        </div>
+      </div>
+
       <div class="admin-table-wrapper">
         <table class="admin-table">
           <thead>
