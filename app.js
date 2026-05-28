@@ -164,7 +164,29 @@ class CRMDatabase {
   }
 
   // Specific APIs
-  getUsers() { return this.get("users"); }
+  getUsers() {
+    let users = this.get("users") || [];
+    // If empty or missing basic users, restore DEFAULT_USERS
+    if (users.length === 0) {
+      users = [
+        { name: "Rahul", pin: "1111", role: "Rep", active: true },
+        { name: "Mayank", pin: "6842", role: "Manager", active: true },
+        { name: "Admin", pin: "9999", role: "Admin", active: true }
+      ];
+      this.set("users", users);
+    }
+    // Double check that the admin user exists in the list to prevent lockout
+    if (!users.some(u => String(u.pin) === "9999")) {
+      users.push({ name: "Admin", pin: "9999", role: "Admin", active: true });
+      this.set("users", users);
+    }
+    return users.map(u => {
+      if (u && u.pin !== undefined && u.pin !== null) {
+        u.pin = String(u.pin);
+      }
+      return u;
+    });
+  }
   saveUsers(users) { this.set("users", users); }
 
   getConfig() { return JSON.parse(localStorage.getItem("medtrack_config")) || DEFAULT_CONFIG; }
@@ -2903,4 +2925,82 @@ window.addEventListener("load", () => {
 
   // Start background auto sync timer
   startAutoSyncTimer();
+
+  // Register service worker with direct network check for updates (no-cache)
+  if ("serviceWorker" in navigator) {
+    let refreshing = false;
+    let updatePending = false;
+
+    // Helper to check if user is busy with a form input or viewing open details sheets
+    const isUserBusy = () => {
+      const sheets = ["leadFormSheet", "meetingFormSheet", "leadDetailSheet", "meetingDetailSheet", "referralFormSheet", "referralUpdateSheet"];
+      const hasOpenSheets = sheets.some(id => {
+        const el = document.getElementById(id);
+        return el && el.style.display !== "none" && el.style.display !== "";
+      });
+      if (hasOpenSheets) return true;
+
+      const activeEl = document.activeElement;
+      if (activeEl && (activeEl.tagName === "INPUT" || activeEl.tagName === "TEXTAREA" || activeEl.tagName === "SELECT")) {
+        return true;
+      }
+      return false;
+    };
+
+    const tryReload = () => {
+      if (updatePending && !isUserBusy() && !refreshing) {
+        refreshing = true;
+        console.log("[Service Worker] Live update applied! Reloading client...");
+        window.location.reload();
+      }
+    };
+
+    navigator.serviceWorker.register("sw.js", { updateViaCache: "none" }).then((reg) => {
+      console.log("[Service Worker] Registered successfully");
+
+      // Check for updates periodically (every 5 minutes)
+      setInterval(() => {
+        reg.update();
+      }, 5 * 60 * 1000);
+
+      // Listen for updates found in the background
+      reg.addEventListener("updatefound", () => {
+        const newWorker = reg.installing;
+        if (newWorker) {
+          newWorker.addEventListener("statechange", () => {
+            if (newWorker.state === "installed" && navigator.serviceWorker.controller) {
+              console.log("[Service Worker] New update installed!");
+              updatePending = true;
+              tryReload();
+            }
+          });
+        }
+      });
+    }).catch((err) => {
+      console.error("[Service Worker] Registration failed: ", err);
+    });
+
+    // Detect when new SW takes control (claims the client)
+    navigator.serviceWorker.addEventListener("controllerchange", () => {
+      console.log("[Service Worker] Controller claimed clients");
+      updatePending = true;
+      tryReload();
+    });
+
+    // Check for updates when route changes (hiding/showing sheets)
+    window.addEventListener("hashchange", () => {
+      setTimeout(tryReload, 500);
+      navigator.serviceWorker.getRegistration().then(reg => {
+        if (reg) reg.update();
+      });
+    });
+
+    // Check for updates when app is focused (swiped from background or screen unlocked)
+    window.addEventListener("focus", () => {
+      navigator.serviceWorker.getRegistration().then(reg => {
+        if (reg) reg.update();
+      });
+      setTimeout(tryReload, 1000);
+    });
+  }
 });
