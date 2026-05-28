@@ -421,6 +421,7 @@
                 <th>Display Label</th>
                 <th>Target Form</th>
                 <th>Mandatory</th>
+                <th>State</th>
                 <th>Action</th>
               </tr>
             </thead>
@@ -668,8 +669,8 @@
           <input type="text" id="leadOrg" class="form-control" placeholder="E.g. City Care Center">
         </div>
         <!-- Primary Point of Contact (POC 1) -->
-        <div style="margin-top: 8px; margin-bottom: 12px; border-top: 1px solid var(--card-border); padding-top: 12px; grid-column: span 1;">
-          <h4 style="font-size: 0.9rem; color: var(--primary); margin-bottom: 8px;">Primary Point of Contact (POC 1)</h4>
+        <div id="leadPoc1" style="margin-top: 8px; margin-bottom: 12px; border-top: 1px solid var(--card-border); padding-top: 12px; grid-column: span 1;">
+          <h4 id="lbl_leadPoc1" style="font-size: 0.9rem; color: var(--primary); margin-bottom: 8px;">Primary Point of Contact (POC 1)</h4>
           <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px;">
             <div class="form-group" style="margin-bottom: 0;">
               <label id="lbl_leadPoc1Name" class="form-label required">Doctor / POC Name</label>
@@ -687,8 +688,8 @@
         </div>
 
         <!-- Secondary Point of Contact (POC 2) -->
-        <div style="margin-top: 8px; margin-bottom: 12px; border-top: 1px solid var(--card-border); padding-top: 12px; grid-column: span 1;">
-          <h4 style="font-size: 0.9rem; color: var(--primary); margin-bottom: 8px;">Secondary Point of Contact (POC 2)</h4>
+        <div id="leadPoc2" style="margin-top: 8px; margin-bottom: 12px; border-top: 1px solid var(--card-border); padding-top: 12px; grid-column: span 1;">
+          <h4 id="lbl_leadPoc2" style="font-size: 0.9rem; color: var(--primary); margin-bottom: 8px;">Secondary Point of Contact (POC 2)</h4>
           <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px;">
             <div class="form-group" style="margin-bottom: 0;">
               <label id="lbl_leadPoc2Name" class="form-label">POC Name</label>

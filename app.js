@@ -2555,10 +2555,30 @@ function applyStandardFieldsConfig() {
     }
     
     if (inputEl) {
-      if (field.mandatory) {
-        inputEl.setAttribute("required", "true");
+      const active = field.active !== false;
+      const containerEl = inputEl.classList.contains("form-control") ? inputEl.parentElement : inputEl;
+      
+      if (field.mandatory && active) {
+        if (inputEl.tagName === "INPUT" || inputEl.tagName === "SELECT" || inputEl.tagName === "TEXTAREA") {
+          inputEl.setAttribute("required", "true");
+        } else {
+          const nameInput = inputEl.querySelector('input[id$="Name"]');
+          if (nameInput) nameInput.setAttribute("required", "true");
+        }
       } else {
-        inputEl.removeAttribute("required");
+        if (inputEl.tagName === "INPUT" || inputEl.tagName === "SELECT" || inputEl.tagName === "TEXTAREA") {
+          inputEl.removeAttribute("required");
+        } else {
+          const nameInput = inputEl.querySelector('input[id$="Name"]');
+          if (nameInput) nameInput.removeAttribute("required");
+        }
+      }
+      
+      if (active) {
+        containerEl.style.display = "";
+      } else {
+        containerEl.style.display = "none";
+        containerEl.querySelectorAll("input, select, textarea").forEach(el => el.removeAttribute("required"));
       }
     }
   });
@@ -2571,11 +2591,17 @@ function renderAdminStdFields() {
 
   stdFields.forEach(field => {
     const tr = document.createElement("tr");
+    const active = field.active !== false;
     tr.innerHTML = `
       <td style="font-weight:600; color:var(--primary);"><code>${field.id}</code></td>
       <td>${field.label}</td>
       <td>${field.target.toUpperCase()}</td>
       <td>${field.mandatory ? "Yes" : "No"}</td>
+      <td>
+        <span class="sync-badge ${active ? "online" : "offline"}" style="padding:4px 8px; cursor:pointer;" onclick="toggleStdFieldActive('${field.id}')">
+          ${active ? "Enabled" : "Disabled"}
+        </span>
+      </td>
       <td>
         <button class="btn btn-secondary" style="height:28px; padding:0 8px; font-size:0.75rem; width:auto;" onclick="editStdField('${field.id}')">Edit</button>
       </td>
@@ -2596,6 +2622,26 @@ function editStdField(id) {
   
   document.getElementById("standardFieldEditor").style.display = "block";
   document.getElementById("standardFieldEditor").scrollIntoView({ behavior: 'smooth' });
+}
+
+function toggleStdFieldActive(id) {
+  const criticalFields = ["leadOrg", "meetingLeadId", "referralLeadId", "refPatientName"];
+  if (criticalFields.includes(id)) {
+    showToast("This field is critical for linkage and cannot be disabled.", "error");
+    return;
+  }
+
+  const stdFields = db.getStandardFields();
+  const idx = stdFields.findIndex(f => f.id === id);
+  if (idx !== -1) {
+    const currentActive = stdFields[idx].active !== false;
+    stdFields[idx].active = !currentActive;
+    
+    db.saveStandardFields(stdFields);
+    showToast(`${stdFields[idx].label} state changed`, "info");
+    applyStandardFieldsConfig();
+    renderAdminStdFields();
+  }
 }
 
 function cancelStdFieldEdit() {
