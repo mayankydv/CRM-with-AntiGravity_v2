@@ -2391,8 +2391,6 @@ function renderAdminPanel() {
 
   if (activeAdminTab === "users") {
     renderAdminUsers();
-  } else if (activeAdminTab === "dropdowns") {
-    renderAdminDropdowns();
   } else if (activeAdminTab === "forms") {
     renderAdminForms();
   } else if (activeAdminTab === "sharing") {
@@ -2479,64 +2477,171 @@ function deleteUser(idx) {
   }
 }
 
-// 2. Config Dropdowns Admin
-function renderAdminDropdowns() {
-  const config = db.getConfig();
-  const dropdownSelect = document.getElementById("adminDropdownSelect");
-  const selectedKey = dropdownSelect.value;
-  const list = config[selectedKey] || [];
-
-  const chipsContainer = document.getElementById("adminDropdownChips");
-  chipsContainer.innerHTML = "";
-
-  list.forEach((opt, idx) => {
-    const chip = document.createElement("div");
-    chip.className = "option-chip";
-    chip.innerHTML = `
+// 2. Inline Options Management Helpers
+function renderOptionsManagerHTML(uniqueId, isStandard, configKeyOrIdx, optionsList, title = "Dropdown Options") {
+  const chips = optionsList.map(opt => `
+    <div class="option-chip" style="background: rgba(15, 76, 97, 0.05); border: 1px solid var(--primary-glow); padding: 4px 10px; border-radius: 20px; display: inline-flex; align-items: center; gap: 6px; font-size: 0.75rem;">
       <span>${opt}</span>
-      <button class="option-chip-delete" onclick="deleteDropdownOption('${selectedKey}', ${idx})">&times;</button>
-    `;
-    chipsContainer.appendChild(chip);
-  });
+      <span class="option-chip-delete" style="cursor: pointer; color: var(--danger); font-weight: bold; font-size: 0.85rem;" onclick="removeInlineOption('${uniqueId}', ${isStandard}, '${configKeyOrIdx}', '${opt.replace(/'/g, "\\'")}')">&times;</span>
+    </div>
+  `).join("");
+
+  return `
+    <div style="margin-top: 10px; padding: 10px; border-radius: var(--radius-sm); background: rgba(255,255,255,0.01); border: 1px solid var(--card-border);">
+      <span style="font-size: 0.75rem; font-weight: 600; color: var(--primary); display: block; margin-bottom: 6px;">${title}</span>
+      <div style="display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px;">
+        ${chips || '<span style="font-size:0.75rem; color:var(--text-muted); font-style:italic;">No options configured yet.</span>'}
+      </div>
+      <div style="display: flex; gap: 6px;">
+        <input type="text" id="add_opt_input_${uniqueId}" class="form-control" style="height: 30px; font-size: 0.8rem; padding: 0 8px; flex: 1; border: 1px solid rgba(15, 76, 97, 0.28);" placeholder="Add option...">
+        <button type="button" class="btn btn-primary" style="height: 30px; width: auto; padding: 0 12px; font-size: 0.75rem;" onclick="addInlineOption('${uniqueId}', ${isStandard}, '${configKeyOrIdx}')">Add</button>
+      </div>
+    </div>
+  `;
 }
 
-function handleDropdownSelectChange() {
-  renderAdminDropdowns();
-}
-
-function addDropdownOption() {
-  const input = document.getElementById("adminNewOptionInput");
-  const val = input.value.trim();
+function addInlineOption(uniqueId, isStandard, configKeyOrIdx) {
+  const inputEl = document.getElementById(`add_opt_input_${uniqueId}`);
+  if (!inputEl) return;
+  const val = inputEl.value.trim();
   if (!val) return;
 
-  const key = document.getElementById("adminDropdownSelect").value;
-  const config = db.getConfig();
-  config[key] = config[key] || [];
+  if (isStandard) {
+    const config = db.getConfig();
+    if (!config[configKeyOrIdx]) config[configKeyOrIdx] = [];
+    if (config[configKeyOrIdx].includes(val)) {
+      showToast("Option already exists", "warning");
+      return;
+    }
+    config[configKeyOrIdx].push(val);
+    db.saveConfig(config);
+    showToast("Option added to dropdown", "success");
+    db.init(); // Refresh default options across forms
+  } else {
+    const fields = db.getFormFields();
+    const fieldIdx = parseInt(configKeyOrIdx);
+    const field = fields[fieldIdx];
+    if (field) {
+      if (!field.options) field.options = [];
+      if (field.options.includes(val)) {
+        showToast("Option already exists", "warning");
+        return;
+      }
+      field.options.push(val);
+      db.saveFormFields(fields);
+      showToast("Option added to custom field options", "success");
+    }
+  }
+  inputEl.value = "";
+  renderAdminForms();
+}
 
-  if (config[key].includes(val)) {
-    showToast("Option already exists", "warning");
+function removeInlineOption(uniqueId, isStandard, configKeyOrIdx, optionValue) {
+  if (!confirm(`Are you sure you want to remove the option "${optionValue}"?`)) {
     return;
   }
 
-  config[key].push(val);
-  db.saveConfig(config);
-  showToast("Option added to configured dropdown", "success");
-  input.value = "";
-  renderAdminDropdowns();
+  if (isStandard) {
+    const config = db.getConfig();
+    if (config[configKeyOrIdx]) {
+      const idx = config[configKeyOrIdx].indexOf(optionValue);
+      if (idx !== -1) {
+        config[configKeyOrIdx].splice(idx, 1);
+        db.saveConfig(config);
+        showToast("Option removed", "info");
+        db.init();
+      }
+    }
+  } else {
+    const fields = db.getFormFields();
+    const fieldIdx = parseInt(configKeyOrIdx);
+    const field = fields[fieldIdx];
+    if (field && field.options) {
+      const idx = field.options.indexOf(optionValue);
+      if (idx !== -1) {
+        field.options.splice(idx, 1);
+        db.saveFormFields(fields);
+        showToast("Option removed", "info");
+      }
+    }
+  }
+  renderAdminForms();
+}
+
+// Inline Custom Field Form Handlers
+function toggleInlineAddFieldForm(target) {
+  const form = document.getElementById(`add_field_form_${target}`);
+  const arrow = document.getElementById(`arrow_${target}`);
+  if (!form || !arrow) return;
+  if (form.style.display === "none") {
+    form.style.display = "flex";
+    arrow.innerHTML = "&#9652;"; // up arrow
+  } else {
+    form.style.display = "none";
+    arrow.innerHTML = "&#9662;"; // down arrow
+  }
+}
+
+function handleNewTypeChangeInline(target) {
+  const type = document.getElementById(`new_type_${target}`).value;
+  const optionsGroup = document.getElementById(`new_options_group_${target}`);
+  if (!optionsGroup) return;
+  if (type === "dropdown" || type === "radio") {
+    optionsGroup.style.display = "block";
+  } else {
+    optionsGroup.style.display = "none";
+  }
+}
+
+function handleAddFormFieldInline(e, target) {
+  e.preventDefault();
+  const label = document.getElementById(`new_label_${target}`).value.trim();
+  const type = document.getElementById(`new_type_${target}`).value;
+  const mandatory = document.getElementById(`new_mandatory_${target}`).checked;
+  const rawOptions = document.getElementById(`new_options_${target}`).value;
+
+  if (!label) return;
+
+  const id = label.toLowerCase().replace(/[^a-z0-9]/g, "");
+  const fields = db.getFormFields();
+  if (fields.some(f => f.id === id)) {
+    showToast("Field with a similar name already exists", "error");
+    return;
+  }
+
+  let optionsList = [];
+  if ((type === "dropdown" || type === "radio") && rawOptions) {
+    optionsList = rawOptions.split(",").map(o => o.trim()).filter(o => o.length > 0);
+  }
+
+  fields.push({
+    id,
+    label,
+    type,
+    mandatory,
+    options: optionsList,
+    active: true,
+    target
+  });
+
+  db.saveFormFields(fields);
+  showToast("Dynamic form updated! Field added.", "success");
+
+  // Reset form inputs
+  document.getElementById(`new_label_${target}`).value = "";
+  document.getElementById(`new_options_${target}`).value = "";
+  document.getElementById(`new_mandatory_${target}`).checked = false;
+  document.getElementById(`new_type_${target}`).value = "text";
+  handleNewTypeChangeInline(target);
   
-  // Refresh UI layouts depending on config
-  db.init();
+  // Hide inline form
+  toggleInlineAddFieldForm(target);
+
+  // Refresh
+  renderAdminForms();
 }
 
-function deleteDropdownOption(key, idx) {
-  const config = db.getConfig();
-  config[key].splice(idx, 1);
-  db.saveConfig(config);
-  showToast("Option removed", "info");
-  renderAdminDropdowns();
-}
-
-// 3. Custom Dynamic Fields Config Admin
+// 3. Custom & Standard Form Fields Controller
 let editingStdFieldId = null;
 
 function applyStandardFieldsConfig() {
@@ -2584,32 +2689,6 @@ function applyStandardFieldsConfig() {
   });
 }
 
-function renderAdminStdFields() {
-  const stdFields = db.getStandardFields();
-  const tbody = document.getElementById("adminStdFieldsTableBody");
-  tbody.innerHTML = "";
-
-  stdFields.forEach(field => {
-    const tr = document.createElement("tr");
-    const active = field.active !== false;
-    tr.innerHTML = `
-      <td style="font-weight:600; color:var(--primary);"><code>${field.id}</code></td>
-      <td>${field.label}</td>
-      <td>${field.target.toUpperCase()}</td>
-      <td>${field.mandatory ? "Yes" : "No"}</td>
-      <td>
-        <span class="sync-badge ${active ? "online" : "offline"}" style="padding:4px 8px; cursor:pointer;" onclick="toggleStdFieldActive('${field.id}')">
-          ${active ? "Enabled" : "Disabled"}
-        </span>
-      </td>
-      <td>
-        <button class="btn btn-secondary" style="height:28px; padding:0 8px; font-size:0.75rem; width:auto;" onclick="editStdField('${field.id}')">Edit</button>
-      </td>
-    `;
-    tbody.appendChild(tr);
-  });
-}
-
 function editStdField(id) {
   const stdFields = db.getStandardFields();
   const field = stdFields.find(f => f.id === id);
@@ -2640,7 +2719,7 @@ function toggleStdFieldActive(id) {
     db.saveStandardFields(stdFields);
     showToast(`${stdFields[idx].label} state changed`, "info");
     applyStandardFieldsConfig();
-    renderAdminStdFields();
+    renderAdminForms();
   }
 }
 
@@ -2659,125 +2738,11 @@ function saveStdFieldChange() {
     stdFields[idx].mandatory = document.getElementById("editStdMandatory").checked;
     
     db.saveStandardFields(stdFields);
-    showToast("Standard field settings updated!", "success");
+    showToast("Standard field updated!", "success");
     applyStandardFieldsConfig();
     cancelStdFieldEdit();
-    renderAdminStdFields();
+    renderAdminForms();
   }
-}
-
-function renderAdminSharing() {
-  const settings = db.getShareSettings();
-  document.getElementById("shareShowStatus").checked = settings.showStatus;
-  document.getElementById("shareShowPoc1").checked = settings.showPoc1;
-  document.getElementById("shareShowOwner").checked = settings.showOwner;
-  document.getElementById("shareShowRevenue").checked = settings.showRevenue;
-  document.getElementById("shareShowLeadId").checked = settings.showLeadId;
-  document.getElementById("shareShowAudience").checked = settings.showAudience;
-  document.getElementById("shareShowFollowup").checked = settings.showFollowup;
-  document.getElementById("shareShowSpeciality").checked = settings.showSpeciality;
-  document.getElementById("shareCaptionText").value = settings.captionText;
-}
-
-function saveShareSettings() {
-  const settings = {
-    showStatus: document.getElementById("shareShowStatus").checked,
-    showPoc1: document.getElementById("shareShowPoc1").checked,
-    showOwner: document.getElementById("shareShowOwner").checked,
-    showRevenue: document.getElementById("shareShowRevenue").checked,
-    showLeadId: document.getElementById("shareShowLeadId").checked,
-    showAudience: document.getElementById("shareShowAudience").checked,
-    showFollowup: document.getElementById("shareShowFollowup").checked,
-    showSpeciality: document.getElementById("shareShowSpeciality").checked,
-    captionText: document.getElementById("shareCaptionText").value
-  };
-  db.saveShareSettings(settings);
-  showToast("Share card settings saved!", "success");
-}
-
-function renderAdminForms() {
-  // Render standard fields configuration
-  renderAdminStdFields();
-  const fields = db.getFormFields();
-  const tbody = document.getElementById("adminFormsTableBody");
-  tbody.innerHTML = "";
-
-  fields.forEach((field, idx) => {
-    const tr = document.createElement("tr");
-    tr.innerHTML = `
-      <td style="font-weight:600; color:var(--primary);">${field.label} (<code>${field.id}</code>)</td>
-      <td>${field.type.toUpperCase()}</td>
-      <td>${field.target.toUpperCase()}</td>
-      <td>${field.mandatory ? "Yes" : "No"}</td>
-      <td>
-        <span class="sync-badge ${field.active ? "online" : "offline"}" style="padding:4px 8px; cursor:pointer;" onclick="toggleFormFieldActive(${idx})">
-          ${field.active ? "Enabled" : "Disabled"}
-        </span>
-      </td>
-      <td>
-        <button class="action-icon-btn edit" style="background:var(--primary-glow); color:var(--primary); margin-right:6px;" onclick="editCustField(${idx})">
-          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 1 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
-        </button>
-        <button class="action-icon-btn delete" onclick="deleteFormField(${idx})">
-          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
-        </button>
-      </td>
-    `;
-    tbody.appendChild(tr);
-  });
-}
-
-function handleFieldTypeChange() {
-  const type = document.getElementById("newFieldType").value;
-  const optionsGroup = document.getElementById("newFieldOptionsGroup");
-  if (type === "dropdown" || type === "radio") {
-    optionsGroup.style.display = "block";
-  } else {
-    optionsGroup.style.display = "none";
-  }
-}
-
-function addFormField(e) {
-  e.preventDefault();
-  const label = document.getElementById("newFieldLabel").value.trim();
-  const type = document.getElementById("newFieldType").value;
-  const target = document.getElementById("newFieldTarget").value;
-  const mandatory = document.getElementById("newFieldMandatory").checked;
-  const rawOptions = document.getElementById("newFieldOptions").value;
-
-  if (!label) return;
-
-  const id = label.toLowerCase().replace(/[^a-z0-9]/g, "");
-  const fields = db.getFormFields();
-  if (fields.some(f => f.id === id)) {
-    showToast("Field with a similar name already exists", "error");
-    return;
-  }
-
-  let optionsList = [];
-  if ((type === "dropdown" || type === "radio") && rawOptions) {
-    optionsList = rawOptions.split(",").map(o => o.trim()).filter(o => o.length > 0);
-  }
-
-  fields.push({
-    id,
-    label,
-    type,
-    mandatory,
-    options: optionsList,
-    active: true,
-    target
-  });
-
-  db.saveFormFields(fields);
-  showToast("Dynamic form updated! Field added.", "success");
-
-  // Reset
-  document.getElementById("newFieldLabel").value = "";
-  document.getElementById("newFieldOptions").value = "";
-  document.getElementById("newFieldMandatory").checked = false;
-  handleFieldTypeChange();
-  renderAdminForms();
 }
 
 function toggleFormFieldActive(idx) {
@@ -2856,6 +2821,187 @@ function saveCustFieldChange() {
   
   cancelCustFieldEdit();
   renderAdminForms();
+}
+
+function renderAdminForms() {
+  const container = document.getElementById("unifiedFormsContainer");
+  if (!container) return;
+  container.innerHTML = "";
+
+  const targets = [
+    { key: "lead", name: "Referral Lead Form Settings", desc: "Configuration for managing hospital / clinic leads and POC profiles." },
+    { key: "meeting", name: "Visit Interaction Form Settings", desc: "Configuration for logging sales visits and discussions." },
+    { key: "referral", name: "Patient Referral Form Settings", desc: "Configuration for patient referral logs and status tracking." }
+  ];
+
+  const stdFields = db.getStandardFields();
+  const customFields = db.getFormFields();
+
+  targets.forEach(target => {
+    const targetStdFields = stdFields.filter(f => f.target === target.key);
+    const targetCustomFields = customFields.map((f, index) => ({ ...f, index })).filter(f => f.target === target.key);
+
+    const card = document.createElement("div");
+    card.className = "glass form-settings-card";
+    card.style = "padding: 20px; border-radius: var(--radius-md); border: 1px solid var(--card-border); background: var(--bg-card); display: flex; flex-direction: column; gap: 16px; margin-bottom: 24px;";
+    
+    let inlineFormHTML = `
+      <div class="inline-add-field-container glass" style="padding: 12px; border-radius: var(--radius-md); border: 1px dashed var(--primary-glow); background: rgba(15, 76, 97, 0.02);">
+        <div style="display: flex; justify-content: space-between; align-items: center; cursor: pointer;" onclick="toggleInlineAddFieldForm('${target.key}')">
+          <span style="font-size: 0.85rem; font-weight: 600; color: var(--primary);">+ Add Custom Field to Form</span>
+          <span id="arrow_${target.key}" style="font-size: 0.8rem;">&#9662;</span>
+        </div>
+        <form id="add_field_form_${target.key}" style="display: none; margin-top: 12px; flex-direction: column; gap: 10px;" onsubmit="handleAddFormFieldInline(event, '${target.key}')">
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+            <div class="form-group" style="margin: 0;">
+              <label class="form-label" style="font-size: 0.75rem;">Field Label</label>
+              <input type="text" id="new_label_${target.key}" class="form-control" style="height: 34px; font-size: 0.8rem; border: 1px solid rgba(15, 76, 97, 0.28);" placeholder="E.g. Department" required>
+            </div>
+            <div class="form-group" style="margin: 0;">
+              <label class="form-label" style="font-size: 0.75rem;">Data Type</label>
+              <select id="new_type_${target.key}" class="form-control" style="height: 34px; font-size: 0.8rem;" onchange="handleNewTypeChangeInline('${target.key}')" required>
+                <option value="text">Single Line Text</option>
+                <option value="textarea">Paragraph Text / Remark Box</option>
+                <option value="number">Number</option>
+                <option value="dropdown">Dropdown Options</option>
+                <option value="radio">Multiple Choice Options (Radio)</option>
+                <option value="checkbox">Checkbox (True/False)</option>
+              </select>
+            </div>
+          </div>
+          <div id="new_options_group_${target.key}" class="form-group" style="display: none; margin: 0;">
+            <label class="form-label" style="font-size: 0.75rem;">Options (Comma-separated)</label>
+            <input type="text" id="new_options_${target.key}" class="form-control" style="height: 34px; font-size: 0.8rem; border: 1px solid rgba(15, 76, 97, 0.28);" placeholder="OPD, IPD, Diagnostics">
+          </div>
+          <div style="display: flex; align-items: center; justify-content: space-between; margin-top: 6px;">
+            <label class="form-checkbox" style="margin: 0; font-size: 0.8rem; display: flex; align-items: center; gap: 6px;">
+              <input type="checkbox" id="new_mandatory_${target.key}">
+              <span>Required Field</span>
+            </label>
+            <button type="submit" class="btn btn-primary" style="height: 30px; font-size: 0.75rem; width: auto; padding: 0 12px;">Add Field</button>
+          </div>
+        </form>
+      </div>
+    `;
+
+    card.innerHTML = `
+      <div class="form-settings-header" style="border-bottom: 1px solid var(--card-border); padding-bottom: 12px; margin-bottom: 8px;">
+        <h3 style="color: var(--primary); font-size: 1.15rem; font-weight: 700; margin: 0;">${target.name}</h3>
+        <p style="font-size: 0.8rem; color: var(--text-muted); margin: 4px 0 0 0;">${target.desc}</p>
+      </div>
+      ${inlineFormHTML}
+      <div style="display: flex; flex-direction: column; gap: 12px;">
+        <h4 style="font-size: 0.85rem; color: var(--primary); margin: 4px 0 0 0;">Configured Fields</h4>
+        <div id="fields_list_${target.key}" style="display: flex; flex-direction: column; gap: 10px;"></div>
+      </div>
+    `;
+
+    container.appendChild(card);
+    const fieldsListContainer = document.getElementById(`fields_list_${target.key}`);
+
+    // Render standard fields
+    targetStdFields.forEach(field => {
+      const active = field.active !== false;
+      const isLinkageCritical = ["leadOrg", "meetingLeadId", "referralLeadId", "refPatientName"].includes(field.id);
+      
+      let typeDisplay = "text";
+      if (field.id === "leadAudience" || field.id === "leadStatus" || field.id === "meetingPurpose" || field.id === "meetingOutcome" || field.id === "meetingLeadId" || field.id === "referralLeadId") {
+        typeDisplay = "dropdown";
+      } else if (field.id === "leadRevenue") {
+        typeDisplay = "number";
+      } else if (field.id === "leadFollowup" || field.id === "meetingDate" || field.id === "meetingFollowup" || field.id === "refVisitDate") {
+        typeDisplay = "date";
+      } else if (field.id === "meetingNotes" || field.id === "refRemarks") {
+        typeDisplay = "textarea";
+      } else if (field.id === "leadPoc1" || field.id === "leadPoc2") {
+        typeDisplay = "poc block";
+      }
+
+      let optionsHtml = "";
+      if (field.id === "leadAudience") {
+        optionsHtml = renderOptionsManagerHTML(`std_${field.id}`, true, "audienceTypes", db.getConfig().audienceTypes || [], "Manage Audience Type Options");
+      } else if (field.id === "leadStatus") {
+        optionsHtml = renderOptionsManagerHTML(`std_${field.id}_status`, true, "leadStatuses", db.getConfig().leadStatuses || [], "Manage Status Options") +
+                      renderOptionsManagerHTML(`std_${field.id}_reasons`, true, "nonConversionReasons", db.getConfig().nonConversionReasons || [], "Manage Non-Conversion Reasons Options");
+      } else if (field.id === "meetingPurpose") {
+        optionsHtml = renderOptionsManagerHTML(`std_${field.id}`, true, "meetingPurposes", db.getConfig().meetingPurposes || [], "Manage Meeting Purpose Options");
+      } else if (field.id === "meetingOutcome") {
+        optionsHtml = renderOptionsManagerHTML(`std_${field.id}`, true, "meetingOutcomes", db.getConfig().meetingOutcomes || [], "Manage Outcome Status Options");
+      }
+
+      const item = document.createElement("div");
+      item.className = "field-item-card glass";
+      item.style = "padding: 12px; border-radius: var(--radius-md); border: 1px solid var(--card-border); background: var(--bg-card); display: flex; flex-direction: column; gap: 8px;";
+      item.innerHTML = `
+        <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 8px;">
+          <div>
+            <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
+              <strong style="color: var(--primary); font-size: 0.85rem;">${field.label}</strong>
+              <span style="font-size: 0.75rem; color: var(--text-muted);">(${field.id})</span>
+            </div>
+            <div style="display: flex; gap: 6px; margin-top: 4px;">
+              <span class="badge" style="background: rgba(15, 76, 97, 0.1); color: var(--primary); font-size: 0.65rem; padding: 1px 6px; border-radius: 4px; font-weight: 600;">Standard</span>
+              <span class="badge" style="background: rgba(255,255,255,0.05); color: var(--text-muted); font-size: 0.65rem; padding: 1px 6px; border-radius: 4px; font-weight: 500;">${typeDisplay}</span>
+              <span class="badge" style="background: ${field.mandatory ? 'rgba(231, 76, 60, 0.1)' : 'rgba(255,255,255,0.03)'}; color: ${field.mandatory ? 'var(--danger)' : 'var(--text-muted)'}; font-size: 0.65rem; padding: 1px 6px; border-radius: 4px; font-weight: 600;">${field.mandatory ? 'Required' : 'Optional'}</span>
+            </div>
+          </div>
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span class="sync-badge ${active ? 'online' : 'offline'}" style="padding: 4px 8px; font-size: 0.7rem; cursor: ${isLinkageCritical ? 'not-allowed' : 'pointer'}; opacity: ${isLinkageCritical ? 0.6 : 1};" 
+                  ${isLinkageCritical ? '' : `onclick="toggleStdFieldActive('${field.id}')"`}>
+              ${active ? 'Enabled' : 'Disabled'}
+            </span>
+            <button class="action-icon-btn edit" style="background: var(--primary-glow); color: var(--primary); padding: 4px;" onclick="editStdField('${field.id}')" title="Edit Label/Mandatory">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 1 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+            </button>
+          </div>
+        </div>
+        ${optionsHtml}
+      `;
+      fieldsListContainer.appendChild(item);
+    });
+
+    // Render custom fields
+    targetCustomFields.forEach(field => {
+      const active = field.active !== false;
+
+      let optionsHtml = "";
+      if (field.type === "dropdown" || field.type === "radio") {
+        optionsHtml = renderOptionsManagerHTML(`cust_${field.id}`, false, field.index, field.options || [], "Manage Choices / Options");
+      }
+
+      const item = document.createElement("div");
+      item.className = "field-item-card glass";
+      item.style = "padding: 12px; border-radius: var(--radius-md); border: 1px solid var(--card-border); background: var(--bg-card); display: flex; flex-direction: column; gap: 8px;";
+      item.innerHTML = `
+        <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 8px;">
+          <div>
+            <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
+              <strong style="color: var(--primary); font-size: 0.85rem;">${field.label}</strong>
+              <span style="font-size: 0.75rem; color: var(--text-muted);">(${field.id})</span>
+            </div>
+            <div style="display: flex; gap: 6px; margin-top: 4px;">
+              <span class="badge" style="background: rgba(46, 204, 113, 0.1); color: #2ecc71; font-size: 0.65rem; padding: 1px 6px; border-radius: 4px; font-weight: 600;">Custom</span>
+              <span class="badge" style="background: rgba(255,255,255,0.05); color: var(--text-muted); font-size: 0.65rem; padding: 1px 6px; border-radius: 4px; font-weight: 500;">${field.type}</span>
+              <span class="badge" style="background: ${field.mandatory ? 'rgba(231, 76, 60, 0.1)' : 'rgba(255,255,255,0.03)'}; color: ${field.mandatory ? 'var(--danger)' : 'var(--text-muted)'}; font-size: 0.65rem; padding: 1px 6px; border-radius: 4px; font-weight: 600;">${field.mandatory ? 'Required' : 'Optional'}</span>
+            </div>
+          </div>
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span class="sync-badge ${active ? 'online' : 'offline'}" style="padding: 4px 8px; font-size: 0.7rem; cursor: pointer;" onclick="toggleFormFieldActive(${field.index})">
+              ${active ? 'Enabled' : 'Disabled'}
+            </span>
+            <button class="action-icon-btn edit" style="background: var(--primary-glow); color: var(--primary); padding: 4px;" onclick="editCustField(${field.index})" title="Edit Label/Mandatory">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 1 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+            </button>
+            <button class="action-icon-btn delete" style="padding: 4px;" onclick="deleteFormField(${field.index})" title="Delete Custom Field">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+            </button>
+          </div>
+        </div>
+        ${optionsHtml}
+      `;
+      fieldsListContainer.appendChild(item);
+    });
+  });
 }
 
 // 4. Synchronization panel

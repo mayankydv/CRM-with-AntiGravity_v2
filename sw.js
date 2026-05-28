@@ -1,5 +1,5 @@
 // Ratlam Hospital CRM - Service Worker for Offline-First Support (sw.js)
-const CACHE_NAME = "ratlam-cache-v16";
+const CACHE_NAME = "ratlam-cache-v17";
 const ASSETS = [
   "index.html",
   "styles.css",
