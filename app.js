@@ -2799,19 +2799,29 @@ function editCustField(idx) {
   editingCustFieldIdx = idx;
   document.getElementById("editCustFieldId").innerText = field.id;
   document.getElementById("editCustLabel").value = field.label;
+  document.getElementById("editCustType").value = field.type;
   document.getElementById("editCustMandatory").checked = field.mandatory;
   
-  const optionsGroup = document.getElementById("editCustOptionsGroup");
+  handleEditTypeChange();
   if (field.type === "dropdown" || field.type === "radio") {
-    optionsGroup.style.display = "block";
     document.getElementById("editCustOptions").value = (field.options || []).join(", ");
   } else {
-    optionsGroup.style.display = "none";
     document.getElementById("editCustOptions").value = "";
   }
 
   document.getElementById("customFieldEditor").style.display = "block";
   document.getElementById("customFieldEditor").scrollIntoView({ behavior: 'smooth' });
+}
+
+function handleEditTypeChange() {
+  const type = document.getElementById("editCustType").value;
+  const optionsGroup = document.getElementById("editCustOptionsGroup");
+  if (!optionsGroup) return;
+  if (type === "dropdown" || type === "radio") {
+    optionsGroup.style.display = "block";
+  } else {
+    optionsGroup.style.display = "none";
+  }
 }
 
 function cancelCustFieldEdit() {
@@ -2827,6 +2837,7 @@ function saveCustFieldChange() {
   if (!field) return;
 
   const newLabel = document.getElementById("editCustLabel").value.trim();
+  const newType = document.getElementById("editCustType").value;
   const newMandatory = document.getElementById("editCustMandatory").checked;
   const rawOptions = document.getElementById("editCustOptions").value;
 
@@ -2836,10 +2847,13 @@ function saveCustFieldChange() {
   }
 
   field.label = newLabel;
+  field.type = newType;
   field.mandatory = newMandatory;
 
-  if (field.type === "dropdown" || field.type === "radio") {
+  if (newType === "dropdown" || newType === "radio") {
     field.options = rawOptions.split(",").map(o => o.trim()).filter(o => o.length > 0);
+  } else {
+    field.options = [];
   }
 
   db.saveFormFields(fields);
