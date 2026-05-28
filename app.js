@@ -117,20 +117,34 @@ class CRMDatabase {
       stdFields = JSON.parse(localStorage.getItem("medtrack_standard_fields")) || [];
     } catch(e) {}
     
+    // Remove old merged POC fields if present to trigger upgrade
+    let updated = false;
+    if (stdFields.some(f => f.id === "leadPoc1" || f.id === "leadPoc2")) {
+      stdFields = stdFields.filter(f => f.id !== "leadPoc1" && f.id !== "leadPoc2");
+      updated = true;
+    }
+    
     const defaultStdFields = [
       { id: "leadOrg", label: "Hospital / Clinic Organisation", mandatory: true, target: "lead" },
-      { id: "leadPoc1", label: "Primary POC (Doctor Name, Phone)", mandatory: true, target: "lead" },
-      { id: "leadPoc2", label: "Secondary POC (Assistant, Admin Info)", mandatory: false, target: "lead" },
+      { id: "leadPoc1Name", label: "Primary POC: Doctor Name", mandatory: true, target: "lead" },
+      { id: "leadPoc1Phone", label: "Primary POC: Phone Number", mandatory: true, target: "lead" },
+      { id: "leadPoc1Specialization", label: "Primary POC: Specialization Focus", mandatory: false, target: "lead" },
+      { id: "leadPoc2Name", label: "Secondary POC: Name", mandatory: false, target: "lead" },
+      { id: "leadPoc2Phone", label: "Secondary POC: Phone Number", mandatory: false, target: "lead" },
+      { id: "leadPoc2Specialization", label: "Secondary POC: Specialization / Designation", mandatory: false, target: "lead" },
       { id: "leadAudience", label: "Audience Type", mandatory: false, target: "lead" },
       { id: "leadStatus", label: "Referral Status", mandatory: false, target: "lead" },
       { id: "leadRevenue", label: "Est. Revenue Value (₹)", mandatory: true, target: "lead" },
       { id: "leadFollowup", label: "Next Action Date", mandatory: false, target: "lead" },
+      { id: "leadGps", label: "Establishment GPS Location", mandatory: false, target: "lead" },
       { id: "meetingLeadId", label: "Select Hospital Lead", mandatory: true, target: "meeting" },
       { id: "meetingPurpose", label: "Meeting Purpose", mandatory: false, target: "meeting" },
       { id: "meetingOutcome", label: "Outcome Status", mandatory: false, target: "meeting" },
       { id: "meetingNotes", label: "Interaction Summary Notes", mandatory: true, target: "meeting" },
       { id: "meetingDate", label: "Visit Date", mandatory: true, target: "meeting" },
       { id: "meetingFollowup", label: "Follow-up Date", mandatory: false, target: "meeting" },
+      { id: "meetingGps", label: "GPS Visit Verification", mandatory: false, target: "meeting" },
+      { id: "meetingPhoto", label: "Log Photo Proof (Visits proof)", mandatory: false, target: "meeting" },
       { id: "referralLeadId", label: "Select Hospital / Clinic Lead", mandatory: true, target: "referral" },
       { id: "refPatientName", label: "Patient Full Name", mandatory: true, target: "referral" },
       { id: "refPatientPhone", label: "Patient Phone Number", mandatory: true, target: "referral" },
@@ -141,7 +155,6 @@ class CRMDatabase {
     if (stdFields.length === 0) {
       localStorage.setItem("medtrack_standard_fields", JSON.stringify(defaultStdFields));
     } else {
-      let updated = false;
       defaultStdFields.forEach(df => {
         if (!stdFields.some(f => f.id === df.id)) {
           stdFields.push(df);
@@ -2661,7 +2674,7 @@ function applyStandardFieldsConfig() {
     
     if (inputEl) {
       const active = field.active !== false;
-      const containerEl = inputEl.classList.contains("form-control") ? inputEl.parentElement : inputEl;
+      const containerEl = inputEl.closest(".form-group") || inputEl;
       
       if (field.mandatory && active) {
         if (inputEl.tagName === "INPUT" || inputEl.tagName === "SELECT" || inputEl.tagName === "TEXTAREA") {
@@ -2687,6 +2700,19 @@ function applyStandardFieldsConfig() {
       }
     }
   });
+
+  // Toggle wrapper containers leadPoc1 and leadPoc2 depending on if their sub-fields are active
+  const poc1Active = (fields.find(f => f.id === "leadPoc1Name")?.active !== false) ||
+                     (fields.find(f => f.id === "leadPoc1Phone")?.active !== false) ||
+                     (fields.find(f => f.id === "leadPoc1Specialization")?.active !== false);
+  const wrapper1 = document.getElementById("leadPoc1");
+  if (wrapper1) wrapper1.style.display = poc1Active ? "" : "none";
+
+  const poc2Active = (fields.find(f => f.id === "leadPoc2Name")?.active !== false) ||
+                     (fields.find(f => f.id === "leadPoc2Phone")?.active !== false) ||
+                     (fields.find(f => f.id === "leadPoc2Specialization")?.active !== false);
+  const wrapper2 = document.getElementById("leadPoc2");
+  if (wrapper2) wrapper2.style.display = poc2Active ? "" : "none";
 }
 
 function editStdField(id) {
