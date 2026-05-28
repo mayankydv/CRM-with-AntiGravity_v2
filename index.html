@@ -65,7 +65,6 @@
       </div>
 
       <div id="authError" class="auth-error">Invalid PIN. Please try again.</div>
-      <p style="font-size: 0.75rem; color: var(--text-muted); margin-top: 24px;">Reps: 1111 | Managers: 6842 | Admins: 9999</p>
     </div>
   </div>
 
@@ -445,10 +444,11 @@
               <option value="text">Single Line Text</option>
               <option value="number">Numeric Input</option>
               <option value="dropdown">Dropdown Options</option>
+              <option value="radio">Multiple Choice Options</option>
               <option value="date">Calendar Date Selector</option>
               <option value="checkbox">Toggle Checkbox</option>
               <option value="phone">Phone Number</option>
-              <option value="textarea">Multi-line Paragraph Text</option>
+              <option value="textarea">Paragraph Text / Remark Box</option>
               <option value="email">Email</option>
             </select>
           </div>
@@ -458,11 +458,12 @@
             <select id="newFieldTarget" class="form-control">
               <option value="lead">Referral Lead Form</option>
               <option value="meeting">Visit Meeting Form</option>
+              <option value="referral">Patient Referral Form</option>
             </select>
           </div>
           
           <div class="form-group" id="newFieldOptionsGroup" style="display:none; grid-column: span 2;">
-            <label class="form-label">Dropdown Values (Comma-separated options)</label>
+            <label class="form-label">Field Options (Comma-separated options)</label>
             <input type="text" id="newFieldOptions" class="form-control" placeholder="Cardiology, Neuro, Ortho">
           </div>
         </div>
@@ -643,13 +644,42 @@
           <label id="lbl_leadOrg" class="form-label required">Hospital / Clinic Organisation</label>
           <input type="text" id="leadOrg" class="form-control" placeholder="E.g. City Care Center">
         </div>
-        <div class="form-group">
-          <label id="lbl_leadPoc1" class="form-label required">Primary POC (Doctor Name, Phone)</label>
-          <input type="text" id="leadPoc1" class="form-control" placeholder="E.g. Dr. Verma +91 9988...">
+        <!-- Primary Point of Contact (POC 1) -->
+        <div style="margin-top: 8px; margin-bottom: 12px; border-top: 1px solid var(--card-border); padding-top: 12px; grid-column: span 1;">
+          <h4 style="font-size: 0.9rem; color: var(--primary); margin-bottom: 8px;">Primary Point of Contact (POC 1)</h4>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px;">
+            <div class="form-group" style="margin-bottom: 0;">
+              <label id="lbl_leadPoc1Name" class="form-label required">Doctor / POC Name</label>
+              <input type="text" id="leadPoc1Name" class="form-control" placeholder="E.g. Dr. Verma">
+            </div>
+            <div class="form-group" style="margin-bottom: 0;">
+              <label id="lbl_leadPoc1Phone" class="form-label required">POC Phone Number</label>
+              <input type="tel" id="leadPoc1Phone" class="form-control" placeholder="E.g. +91 9988776655">
+            </div>
+          </div>
+          <div class="form-group">
+            <label id="lbl_leadPoc1Specialization" class="form-label">POC Specialization Focus</label>
+            <input type="text" id="leadPoc1Specialization" class="form-control" placeholder="E.g. Cardiology, Orthopaedics">
+          </div>
         </div>
-        <div class="form-group">
-          <label id="lbl_leadPoc2" class="form-label">Secondary POC (Assistant, Admin Info)</label>
-          <input type="text" id="leadPoc2" class="form-control" placeholder="Name or number (optional)">
+
+        <!-- Secondary Point of Contact (POC 2) -->
+        <div style="margin-top: 8px; margin-bottom: 12px; border-top: 1px solid var(--card-border); padding-top: 12px; grid-column: span 1;">
+          <h4 style="font-size: 0.9rem; color: var(--primary); margin-bottom: 8px;">Secondary Point of Contact (POC 2)</h4>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px;">
+            <div class="form-group" style="margin-bottom: 0;">
+              <label id="lbl_leadPoc2Name" class="form-label">POC Name</label>
+              <input type="text" id="leadPoc2Name" class="form-control" placeholder="E.g. Amit (Manager)">
+            </div>
+            <div class="form-group" style="margin-bottom: 0;">
+              <label id="lbl_leadPoc2Phone" class="form-label">POC Phone Number</label>
+              <input type="tel" id="leadPoc2Phone" class="form-control" placeholder="E.g. +91 8887776666">
+            </div>
+          </div>
+          <div class="form-group">
+            <label id="lbl_leadPoc2Specialization" class="form-label">POC Designation / Speciality</label>
+            <input type="text" id="leadPoc2Specialization" class="form-control" placeholder="E.g. Reception, Clinic Admin">
+          </div>
         </div>
         
         <div style="display:grid; grid-template-columns: repeat(2, 1fr); gap: 12px;">
@@ -797,13 +827,25 @@
             <span style="color:var(--text-muted)">Rep Owner:</span>
             <span style="font-weight:600;" id="detailOwner">Rahul</span>
           </li>
-          <li style="display:flex; justify-content:space-between; font-size:0.85rem; border-bottom: 1px solid var(--bg-app); padding:4px 0;">
-            <span style="color:var(--text-muted)">Primary Contact:</span>
-            <span style="font-weight:600;" id="detailPoc1">Dr. Sharma</span>
+          <li style="display:flex; flex-direction:column; gap:4px; font-size:0.85rem; border-bottom: 1px solid var(--bg-app); padding:6px 0;">
+            <span style="color:var(--text-muted); font-weight: 500;">Primary POC (Primary Contact):</span>
+            <div style="display:flex; justify-content:space-between; font-weight:600; padding-left:8px;">
+              <span>Name: <span id="detailPoc1Name">-</span></span>
+              <span>Phone: <span id="detailPoc1Phone">-</span></span>
+            </div>
+            <div style="font-weight:600; padding-left:8px; font-size:0.8rem; color:var(--primary-light);">
+              Specialization: <span id="detailPoc1Spec">-</span>
+            </div>
           </li>
-          <li style="display:flex; justify-content:space-between; font-size:0.85rem; border-bottom: 1px solid var(--bg-app); padding:4px 0;">
-            <span style="color:var(--text-muted)">Secondary Contact:</span>
-            <span style="font-weight:600;" id="detailPoc2">-</span>
+          <li style="display:flex; flex-direction:column; gap:4px; font-size:0.85rem; border-bottom: 1px solid var(--bg-app); padding:6px 0;">
+            <span style="color:var(--text-muted); font-weight: 500;">Secondary POC:</span>
+            <div style="display:flex; justify-content:space-between; font-weight:600; padding-left:8px;">
+              <span>Name: <span id="detailPoc2Name">-</span></span>
+              <span>Phone: <span id="detailPoc2Phone">-</span></span>
+            </div>
+            <div style="font-weight:600; padding-left:8px; font-size:0.8rem; color:var(--primary-light);">
+              Specialization: <span id="detailPoc2Spec">-</span>
+            </div>
           </li>
           <li style="display:flex; justify-content:space-between; font-size:0.85rem; border-bottom: 1px solid var(--bg-app); padding:4px 0;">
             <span style="color:var(--text-muted)">GPS Coordinates:</span>
@@ -885,6 +927,13 @@
       </div>
 
       <div class="sheet-section">
+        <div class="sheet-section-title">Additional Info</div>
+        <ul id="detailMeetingCustomFields" style="list-style:none; padding:0; display:flex; flex-direction:column; gap:8px;">
+          <!-- Dynamically populated -->
+        </ul>
+      </div>
+
+      <div class="sheet-section">
         <div class="sheet-section-title">Meeting Photo Proof</div>
         <div id="detailMeetingPhotoContainer"></div>
       </div>
@@ -900,22 +949,22 @@
       </div>
       <form id="referralFormEl" class="form-grid">
         <div class="form-group">
-          <label class="form-label required">Select Hospital / Clinic Lead</label>
+          <label id="lbl_referralLeadId" class="form-label required">Select Hospital / Clinic Lead</label>
           <select id="referralLeadId" class="form-control" required></select>
         </div>
         
         <div class="form-group">
-          <label class="form-label required">Patient Full Name</label>
+          <label id="lbl_refPatientName" class="form-label required">Patient Full Name</label>
           <input type="text" id="refPatientName" class="form-control" placeholder="E.g. Ramesh Kumar" required>
         </div>
 
         <div class="form-group">
-          <label class="form-label required">Patient Phone Number</label>
+          <label id="lbl_refPatientPhone" class="form-label required">Patient Phone Number</label>
           <input type="text" id="refPatientPhone" class="form-control" placeholder="10-digit mobile number" required>
         </div>
 
         <div class="form-group">
-          <label class="form-label required">Expected Visit Date</label>
+          <label id="lbl_refVisitDate" class="form-label required">Expected Visit Date</label>
           <input type="date" id="refVisitDate" class="form-control" required>
           <div style="display: flex; gap: 8px; margin-top: 6px;">
             <button type="button" class="btn btn-secondary" style="height: 28px; padding: 0 10px; font-size: 0.75rem; width: auto; background: rgba(255,255,255,0.05);" onclick="setRefDateQuick('today')">Today</button>
@@ -924,9 +973,12 @@
         </div>
 
         <div class="form-group">
-          <label class="form-label">Remark (If Any)</label>
+          <label id="lbl_refRemarks" class="form-label">Remark (If Any)</label>
           <textarea id="refRemarks" class="form-control" placeholder="E.g. Referred for Cardiology consultation..." style="height: 80px;"></textarea>
         </div>
+
+        <!-- Dynamic Custom Fields Container -->
+        <div id="referralCustomFieldsContainer" class="form-grid" style="margin-top:4px;"></div>
 
         <button type="submit" class="btn btn-primary" style="height: 48px; margin-top: 10px;">Save Referral Record</button>
       </form>

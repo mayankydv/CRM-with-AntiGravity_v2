@@ -36,6 +36,37 @@ const DEFAULT_MEETINGS = [
   { meetingId: "M-004", leadId: "L-003", purpose: "Follow Up", notes: "Followed up with proposal. Doctor declined saying competitor is closer.", outcome: "Lost Opportunity", owner: "Rahul", gps: "23.3298, 75.0412", date: "2026-05-18", followup: "", createdAt: "2026-05-18T16:00:00.000Z", archived: false }
 ];
 
+function parseLegacyPoc(pocStr) {
+  if (!pocStr) return { name: "", phone: "", specialization: "" };
+  
+  let name = "";
+  let phone = "";
+  let specialization = "";
+  
+  const dashParts = pocStr.split(" - ");
+  let mainPart = dashParts[0];
+  if (dashParts[1]) {
+    specialization = dashParts[1].trim();
+  }
+  
+  const parenParts = mainPart.split("(");
+  name = parenParts[0].trim();
+  if (parenParts[1]) {
+    const pValue = parenParts[1].split(")")[0].trim();
+    if (pValue.startsWith("+") || /\d/.test(pValue)) {
+      phone = pValue;
+    } else {
+      if (!specialization) {
+        specialization = pValue;
+      } else {
+        phone = pValue;
+      }
+    }
+  }
+  
+  return { name, phone, specialization };
+}
+
 // --- DATABASE HANDLER (LOCAL-FIRST) ---
 class CRMDatabase {
   constructor() {
@@ -81,23 +112,45 @@ class CRMDatabase {
       };
       localStorage.setItem("medtrack_share_settings", JSON.stringify(defaultSettings));
     }
-    if (!localStorage.getItem("medtrack_standard_fields")) {
-      const defaultStdFields = [
-        { id: "leadOrg", label: "Hospital / Clinic Organisation", mandatory: true, target: "lead" },
-        { id: "leadPoc1", label: "Primary POC (Doctor Name, Phone)", mandatory: true, target: "lead" },
-        { id: "leadPoc2", label: "Secondary POC (Assistant, Admin Info)", mandatory: false, target: "lead" },
-        { id: "leadAudience", label: "Audience Type", mandatory: false, target: "lead" },
-        { id: "leadStatus", label: "Referral Status", mandatory: false, target: "lead" },
-        { id: "leadRevenue", label: "Est. Revenue Value (₹)", mandatory: true, target: "lead" },
-        { id: "leadFollowup", label: "Next Action Date", mandatory: false, target: "lead" },
-        { id: "meetingLeadId", label: "Select Hospital Lead", mandatory: true, target: "meeting" },
-        { id: "meetingPurpose", label: "Meeting Purpose", mandatory: false, target: "meeting" },
-        { id: "meetingOutcome", label: "Outcome Status", mandatory: false, target: "meeting" },
-        { id: "meetingNotes", label: "Interaction Summary Notes", mandatory: true, target: "meeting" },
-        { id: "meetingDate", label: "Visit Date", mandatory: true, target: "meeting" },
-        { id: "meetingFollowup", label: "Follow-up Date", mandatory: false, target: "meeting" }
-      ];
+    let stdFields = [];
+    try {
+      stdFields = JSON.parse(localStorage.getItem("medtrack_standard_fields")) || [];
+    } catch(e) {}
+    
+    const defaultStdFields = [
+      { id: "leadOrg", label: "Hospital / Clinic Organisation", mandatory: true, target: "lead" },
+      { id: "leadPoc1", label: "Primary POC (Doctor Name, Phone)", mandatory: true, target: "lead" },
+      { id: "leadPoc2", label: "Secondary POC (Assistant, Admin Info)", mandatory: false, target: "lead" },
+      { id: "leadAudience", label: "Audience Type", mandatory: false, target: "lead" },
+      { id: "leadStatus", label: "Referral Status", mandatory: false, target: "lead" },
+      { id: "leadRevenue", label: "Est. Revenue Value (₹)", mandatory: true, target: "lead" },
+      { id: "leadFollowup", label: "Next Action Date", mandatory: false, target: "lead" },
+      { id: "meetingLeadId", label: "Select Hospital Lead", mandatory: true, target: "meeting" },
+      { id: "meetingPurpose", label: "Meeting Purpose", mandatory: false, target: "meeting" },
+      { id: "meetingOutcome", label: "Outcome Status", mandatory: false, target: "meeting" },
+      { id: "meetingNotes", label: "Interaction Summary Notes", mandatory: true, target: "meeting" },
+      { id: "meetingDate", label: "Visit Date", mandatory: true, target: "meeting" },
+      { id: "meetingFollowup", label: "Follow-up Date", mandatory: false, target: "meeting" },
+      { id: "referralLeadId", label: "Select Hospital / Clinic Lead", mandatory: true, target: "referral" },
+      { id: "refPatientName", label: "Patient Full Name", mandatory: true, target: "referral" },
+      { id: "refPatientPhone", label: "Patient Phone Number", mandatory: true, target: "referral" },
+      { id: "refVisitDate", label: "Expected Visit Date", mandatory: true, target: "referral" },
+      { id: "refRemarks", label: "Remark (If Any)", mandatory: false, target: "referral" }
+    ];
+
+    if (stdFields.length === 0) {
       localStorage.setItem("medtrack_standard_fields", JSON.stringify(defaultStdFields));
+    } else {
+      let updated = false;
+      defaultStdFields.forEach(df => {
+        if (!stdFields.some(f => f.id === df.id)) {
+          stdFields.push(df);
+          updated = true;
+        }
+      });
+      if (updated) {
+        localStorage.setItem("medtrack_standard_fields", JSON.stringify(stdFields));
+      }
     }
   }
 
@@ -120,7 +173,32 @@ class CRMDatabase {
   getFormFields() { return this.get("form_fields"); }
   saveFormFields(fields) { this.set("form_fields", fields); }
 
-  getLeads() { return (this.get("leads") || []).filter(l => l && l.leadId && !l.archived); }
+  getLeads() {
+    const rawLeads = this.get("leads") || [];
+    return rawLeads.filter(l => l && l.leadId && !l.archived).map(l => {
+      // Migrate old schema fields on the fly
+      if (l.poc1 && !l.poc1Name) {
+        const p1 = parseLegacyPoc(l.poc1);
+        l.poc1Name = p1.name;
+        l.poc1Phone = p1.phone;
+        l.poc1Specialization = p1.specialization || l.customFields?.speciality || "";
+      }
+      if (l.poc2 && !l.poc2Name) {
+        const p2 = parseLegacyPoc(l.poc2);
+        l.poc2Name = p2.name;
+        l.poc2Phone = p2.phone;
+        l.poc2Specialization = p2.specialization || "";
+      }
+      // Ensure properties exist to prevent undefined references
+      l.poc1Name = l.poc1Name || "";
+      l.poc1Phone = l.poc1Phone || "";
+      l.poc1Specialization = l.poc1Specialization || "";
+      l.poc2Name = l.poc2Name || "";
+      l.poc2Phone = l.poc2Phone || "";
+      l.poc2Specialization = l.poc2Specialization || "";
+      return l;
+    });
+  }
   saveLead(lead) {
     const leads = this.get("leads");
     lead.updatedAt = new Date().toISOString();
@@ -898,8 +976,7 @@ function renderLeadsList() {
 
     const statusBadgeClass = `badge-${(lead.status || "contacted").toLowerCase().replace(" ", "-")}`;
     
-    // Extract name before parenthesis
-    const displayName = (lead.poc1 || "").split("(")[0].trim();
+    const displayName = (lead.poc1Name || lead.poc1 || "").split("(")[0].trim();
     const truncatedName = displayName.length > 25 ? displayName.substring(0, 22) + "..." : displayName;
 
     card.innerHTML = `
@@ -971,10 +1048,10 @@ function renderMeetingsList() {
     .filter(meeting => {
       const cleanSearchVal = searchVal.replace(/\s+/g, "").toLowerCase();
       const lead = leads.find(l => l.leadId === meeting.leadId);
-      const orgName = lead ? lead.organisation : "";
+      const orgName = lead ? lead.organisation || "" : "";
       const cleanOrg = orgName.toLowerCase().replace(/\s+/g, "");
-      const cleanPurpose = meeting.purpose.toLowerCase().replace(/\s+/g, "");
-      const cleanOwner = meeting.owner.toLowerCase().replace(/\s+/g, "");
+      const cleanPurpose = (meeting.purpose || "").toLowerCase().replace(/\s+/g, "");
+      const cleanOwner = (meeting.owner || "").toLowerCase().replace(/\s+/g, "");
       const cleanNotes = (meeting.notes || "").toLowerCase().replace(/\s+/g, "");
       return cleanOrg.includes(cleanSearchVal) || 
              cleanPurpose.includes(cleanSearchVal) ||
@@ -1006,7 +1083,7 @@ function renderMeetingsList() {
           <span>GPS: ${meeting.gps || "Not Captured"}</span>
         </div>
         <div class="record-detail-item">
-          <span>Notes: ${meeting.notes.substring(0, 50)}...</span>
+          <span>Notes: ${(meeting.notes || "").substring(0, 50)}...</span>
         </div>
       </div>
       <div class="record-footer">
@@ -1040,8 +1117,12 @@ function populateLeadFormForAdd(defaultStatus = null) {
   
   // Clear core inputs
   document.getElementById("leadOrg").value = "";
-  document.getElementById("leadPoc1").value = "";
-  document.getElementById("leadPoc2").value = "";
+  document.getElementById("leadPoc1Name").value = "";
+  document.getElementById("leadPoc1Phone").value = "";
+  document.getElementById("leadPoc1Specialization").value = "";
+  document.getElementById("leadPoc2Name").value = "";
+  document.getElementById("leadPoc2Phone").value = "";
+  document.getElementById("leadPoc2Specialization").value = "";
   document.getElementById("leadRevenue").value = "";
   document.getElementById("leadFollowup").value = "";
   document.getElementById("leadGps").value = "";
@@ -1082,8 +1163,12 @@ function populateLeadFormForEdit(lead) {
   }
 
   document.getElementById("leadOrg").value = lead.organisation;
-  document.getElementById("leadPoc1").value = lead.poc1;
-  document.getElementById("leadPoc2").value = lead.poc2 || "";
+  document.getElementById("leadPoc1Name").value = lead.poc1Name || "";
+  document.getElementById("leadPoc1Phone").value = lead.poc1Phone || "";
+  document.getElementById("leadPoc1Specialization").value = lead.poc1Specialization || "";
+  document.getElementById("leadPoc2Name").value = lead.poc2Name || "";
+  document.getElementById("leadPoc2Phone").value = lead.poc2Phone || "";
+  document.getElementById("leadPoc2Specialization").value = lead.poc2Specialization || "";
   document.getElementById("leadRevenue").value = lead.revenuePotential;
   document.getElementById("leadFollowup").value = lead.followup || "";
   document.getElementById("leadGps").value = lead.gps || "";
@@ -1111,6 +1196,10 @@ function populateLeadFormForEdit(lead) {
     if (input) {
       if (f.type === "checkbox") {
         input.checked = lead.customFields?.[f.id] || false;
+      } else if (f.type === "radio") {
+        const val = lead.customFields?.[f.id] || "";
+        const radio = input.querySelector(`input[value="${val}"]`);
+        if (radio) radio.checked = true;
       } else {
         input.value = lead.customFields?.[f.id] || "";
       }
@@ -1186,6 +1275,7 @@ function toggleLostReasonsBox() {
 // Render dynamic custom inputs configured by Admin
 function renderDynamicCustomFields(containerId, target) {
   const container = document.getElementById(containerId);
+  if (!container) return;
   container.innerHTML = "";
 
   const fields = db.getFormFields().filter(f => f.active && f.target === target);
@@ -1213,6 +1303,37 @@ function renderDynamicCustomFields(containerId, target) {
         o.innerText = opt;
         input.appendChild(o);
       });
+    } else if (field.type === "radio") {
+      const radioContainer = document.createElement("div");
+      radioContainer.className = "dynamic-field-radio-group dynamic-field";
+      radioContainer.id = `custom_${field.id}`;
+      radioContainer.style.display = "flex";
+      radioContainer.style.flexWrap = "wrap";
+      radioContainer.style.gap = "16px";
+      radioContainer.style.marginTop = "6px";
+      
+      field.options.forEach((opt, oIdx) => {
+        const rLabel = document.createElement("label");
+        rLabel.className = "form-checkbox";
+        rLabel.style.margin = "0";
+        rLabel.style.cursor = "pointer";
+        
+        const rInput = document.createElement("input");
+        rInput.type = "radio";
+        rInput.name = `custom_radio_${field.id}`;
+        rInput.value = opt;
+        if (field.mandatory && oIdx === 0) rInput.required = true;
+        
+        const rText = document.createElement("span");
+        rText.innerText = opt;
+        
+        rLabel.appendChild(rInput);
+        rLabel.appendChild(rText);
+        radioContainer.appendChild(rLabel);
+      });
+      group.appendChild(radioContainer);
+      container.appendChild(group);
+      return;
     } else if (field.type === "textarea") {
       input = document.createElement("textarea");
       input.className = "form-control dynamic-field";
@@ -1243,19 +1364,44 @@ function renderDynamicCustomFields(containerId, target) {
   });
 }
 
+function collectDynamicFields(containerId) {
+  const customFieldsData = {};
+  const container = document.getElementById(containerId);
+  if (!container) return customFieldsData;
+  
+  const dynamicInputs = container.querySelectorAll(".dynamic-field");
+  dynamicInputs.forEach(input => {
+    const fid = input.id.replace("custom_", "");
+    if (input.classList.contains("dynamic-field-radio-group")) {
+      const checkedRadio = input.querySelector('input[type="radio"]:checked');
+      customFieldsData[fid] = checkedRadio ? checkedRadio.value : "";
+    } else {
+      customFieldsData[fid] = input.type === "checkbox" ? input.checked : input.value;
+    }
+  });
+  return customFieldsData;
+}
+
 // Save Lead Form Submit
 function submitLeadForm(e) {
   e.preventDefault();
   
+  const poc1Name = document.getElementById("leadPoc1Name").value.trim();
+  const poc1Phone = document.getElementById("leadPoc1Phone").value.trim();
+  const poc1Specialization = document.getElementById("leadPoc1Specialization").value.trim();
+  
+  const poc2Name = document.getElementById("leadPoc2Name").value.trim();
+  const poc2Phone = document.getElementById("leadPoc2Phone").value.trim();
+  const poc2Specialization = document.getElementById("leadPoc2Specialization").value.trim();
+
+  // Combine into poc1/poc2 strings for backward compatibility
+  const poc1 = poc1Name + (poc1Phone ? ` (${poc1Phone})` : "") + (poc1Specialization ? ` - ${poc1Specialization}` : "");
+  const poc2 = poc2Name + (poc2Phone ? ` (${poc2Phone})` : "") + (poc2Specialization ? ` - ${poc2Specialization}` : "");
+
   const leadId = selectedLead ? selectedLead.leadId : "L-" + Math.floor(Math.random() * 9000 + 1000);
   const status = document.getElementById("leadStatus").value;
 
-  const customFieldsData = {};
-  const dynamicInputs = document.querySelectorAll("#leadCustomFieldsContainer .dynamic-field");
-  dynamicInputs.forEach(input => {
-    const fid = input.id.replace("custom_", "");
-    customFieldsData[fid] = input.type === "checkbox" ? input.checked : input.value;
-  });
+  const customFieldsData = collectDynamicFields("leadCustomFieldsContainer");
 
   // Record edit logs inside Lead Custom Fields edits
   const edits = selectedLead && selectedLead.customFields && selectedLead.customFields.edits ? [...selectedLead.customFields.edits] : [];
@@ -1270,8 +1416,14 @@ function submitLeadForm(e) {
   const leadData = {
     leadId,
     organisation: document.getElementById("leadOrg").value,
-    poc1: document.getElementById("leadPoc1").value,
-    poc2: document.getElementById("leadPoc2").value,
+    poc1Name,
+    poc1Phone,
+    poc1Specialization,
+    poc2Name,
+    poc2Phone,
+    poc2Specialization,
+    poc1,
+    poc2,
     audienceType: document.getElementById("leadAudience").value,
     owner: selectedLead ? selectedLead.owner : currentUser.name,
     gps: document.getElementById("leadGps").value,
@@ -1296,12 +1448,7 @@ function submitLeadForm(e) {
 function submitMeetingForm(e) {
   e.preventDefault();
 
-  const customFieldsData = {};
-  const dynamicInputs = document.querySelectorAll("#meetingCustomFieldsContainer .dynamic-field");
-  dynamicInputs.forEach(input => {
-    const fid = input.id.replace("custom_", "");
-    customFieldsData[fid] = input.type === "checkbox" ? input.checked : input.value;
-  });
+  const customFieldsData = collectDynamicFields("meetingCustomFieldsContainer");
 
   const meetingData = {
     meetingId: "M-" + Math.floor(Math.random() * 9000 + 1000),
@@ -1337,8 +1484,9 @@ function submitMeetingForm(e) {
     }
   }
 
-  showToast("Meeting logged successfully and referral statuses synced!", "success");
+  showToast("Meeting successfully added!", "success");
   closeSheet("meetingFormSheet");
+  triggerSync(true);
   renderMeetingsList();
   renderDashboard();
 }
@@ -1494,14 +1642,23 @@ function renderLeadDetail(id) {
 
   selectedLead = lead;
 
-  document.getElementById("detailOrg").innerText = lead.organisation;
-  document.getElementById("detailStatus").innerText = lead.status;
-  document.getElementById("detailStatus").className = `record-badge badge-${lead.status.toLowerCase().replace(" ", "-")}`;
+  const status = lead.status || "Contacted";
+  document.getElementById("detailOrg").innerText = lead.organisation || "Unnamed Organisation";
+  document.getElementById("detailStatus").innerText = status;
+  document.getElementById("detailStatus").className = `record-badge badge-${status.toLowerCase().replace(" ", "-")}`;
 
-  document.getElementById("detailAudience").innerText = lead.audienceType;
-  document.getElementById("detailOwner").innerText = lead.owner;
-  document.getElementById("detailPoc1").innerText = lead.poc1;
-  document.getElementById("detailPoc2").innerText = lead.poc2 || "-";
+  document.getElementById("detailAudience").innerText = lead.audienceType || "-";
+  document.getElementById("detailOwner").innerText = lead.owner || "-";
+  
+  // Display structured POC details
+  document.getElementById("detailPoc1Name").innerText = lead.poc1Name || "-";
+  document.getElementById("detailPoc1Phone").innerText = lead.poc1Phone || "-";
+  document.getElementById("detailPoc1Spec").innerText = lead.poc1Specialization || "-";
+  
+  document.getElementById("detailPoc2Name").innerText = lead.poc2Name || "-";
+  document.getElementById("detailPoc2Phone").innerText = lead.poc2Phone || "-";
+  document.getElementById("detailPoc2Spec").innerText = lead.poc2Specialization || "-";
+
   document.getElementById("detailGps").innerText = lead.gps || "None Captured";
   document.getElementById("detailFollowup").innerText = lead.followup || "None Scheduled";
   document.getElementById("detailRevenue").innerText = `₹${lead.revenuePotential.toLocaleString()}`;
@@ -1630,6 +1787,25 @@ function renderMeetingDetail(id) {
   document.getElementById("detailMeetingGps").innerText = meeting.gps || "None Recorded";
   document.getElementById("detailMeetingNotes").innerText = meeting.notes;
   document.getElementById("detailMeetingOwner").innerText = meeting.owner;
+
+  // Custom Fields render
+  const customList = document.getElementById("detailMeetingCustomFields");
+  if (customList) {
+    customList.innerHTML = "";
+    const registeredFields = db.getFormFields().filter(f => f.target === "meeting");
+    
+    registeredFields.forEach(f => {
+      const val = meeting.customFields?.[f.id] ?? "-";
+      const li = document.createElement("li");
+      li.style.display = "flex";
+      li.style.justifyContent = "space-between";
+      li.style.padding = "6px 0";
+      li.style.borderBottom = "1px solid var(--bg-app)";
+      li.style.fontSize = "0.85rem";
+      li.innerHTML = `<span style="color:var(--text-muted);">${f.label}:</span> <span style="font-weight:600;">${val}</span>`;
+      customList.appendChild(li);
+    });
+  }
 
   // Custom photo
   const photoContainer = document.getElementById("detailMeetingPhotoContainer");
@@ -1889,10 +2065,10 @@ function renderReferralsList() {
     .filter(ownerFilter)
     .filter(r => {
       const lead = leads.find(l => l.leadId === r.leadId);
-      const leadName = lead ? lead.organisation : "Unknown Lead";
+      const leadName = lead ? lead.organisation || "Unknown Lead" : "Unknown Lead";
       
-      const cleanName = r.patientName.toLowerCase().replace(/\s+/g, "");
-      const cleanPhone = r.patientPhone.replace(/\s+/g, "");
+      const cleanName = (r.patientName || "").toLowerCase().replace(/\s+/g, "");
+      const cleanPhone = (r.patientPhone || "").replace(/\s+/g, "");
       const cleanLeadName = leadName.toLowerCase().replace(/\s+/g, "");
       
       const matchSearch = cleanName.includes(searchVal) || 
@@ -2012,6 +2188,9 @@ function populateReferralFormForAdd() {
   document.getElementById("refPatientPhone").value = "";
   document.getElementById("refVisitDate").value = new Date().toISOString().split("T")[0];
   document.getElementById("refRemarks").value = "";
+  
+  // Render custom fields
+  renderDynamicCustomFields("referralCustomFieldsContainer", "referral");
 }
 
 function setRefDateQuick(type) {
@@ -2038,6 +2217,8 @@ function submitReferralForm(e) {
     return;
   }
   
+  const customFieldsData = collectDynamicFields("referralCustomFieldsContainer");
+
   const newRef = {
     referralId: "R-" + Date.now(),
     leadId,
@@ -2049,7 +2230,8 @@ function submitReferralForm(e) {
     reachedDetails: null,
     admissionId: "",
     owner: currentUser.name,
-    archived: false
+    archived: false,
+    customFields: customFieldsData
   };
   
   db.saveReferral(newRef);
@@ -2073,11 +2255,23 @@ function populateReferralUpdateForm(ref) {
   document.getElementById("refUpdateId").value = ref.referralId;
   document.getElementById("refUpdateReached").value = ref.reached || "";
   
+  // Render referral custom fields in update display
+  let customFieldsHtml = "";
+  const registeredFields = db.getFormFields().filter(f => f.target === "referral");
+  if (registeredFields.length > 0) {
+    customFieldsHtml = `<div style="margin-top: 10px; padding-top: 8px; border-top: 1px dotted rgba(255,255,255,0.15);">`;
+    registeredFields.forEach(f => {
+      const val = ref.customFields?.[f.id] ?? "-";
+      customFieldsHtml += `<strong>${f.label}:</strong> ${val}<br>`;
+    });
+    customFieldsHtml += `</div>`;
+  }
+  
   document.getElementById("refUpdateDetailsDisplay").innerHTML = `
     <strong>Patient:</strong> ${ref.patientName} (${ref.patientPhone})<br>
     <strong>Hospital:</strong> ${leadName}<br>
     <strong>Visit Scheduled:</strong> ${ref.visitDate}<br>
-    <strong>Creation Notes:</strong> ${ref.remarks || "-"}
+    <strong>Creation Notes:</strong> ${ref.remarks || "-"}${customFieldsHtml}
   `;
   
   document.getElementById("refServiceOpd").checked = !!ref.reachedDetails?.opd;
@@ -2465,7 +2659,7 @@ function renderAdminForms() {
 function handleFieldTypeChange() {
   const type = document.getElementById("newFieldType").value;
   const optionsGroup = document.getElementById("newFieldOptionsGroup");
-  if (type === "dropdown") {
+  if (type === "dropdown" || type === "radio") {
     optionsGroup.style.display = "block";
   } else {
     optionsGroup.style.display = "none";
@@ -2490,7 +2684,7 @@ function addFormField(e) {
   }
 
   let optionsList = [];
-  if (type === "dropdown" && rawOptions) {
+  if ((type === "dropdown" || type === "radio") && rawOptions) {
     optionsList = rawOptions.split(",").map(o => o.trim()).filter(o => o.length > 0);
   }
 

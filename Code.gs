@@ -7,9 +7,9 @@
 // Global Sheet Configuration
 const SHEET_SCHEMAS = {
   Users: ["Name", "PIN", "Role", "Active"],
-  Leads: ["LeadID", "Organisation", "POC1", "POC2", "AudienceType", "Owner", "GPS", "Status", "Followup", "RevenuePotential", "NonConversionReason", "NonConversionAction", "CreatedAt", "UpdatedAt", "Archived", "CustomFields"],
+  Leads: ["LeadID", "Organisation", "POC1Name", "POC1Phone", "POC1Specialization", "POC2Name", "POC2Phone", "POC2Specialization", "AudienceType", "Owner", "GPS", "Status", "Followup", "RevenuePotential", "NonConversionReason", "NonConversionAction", "CreatedAt", "UpdatedAt", "Archived", "CustomFields", "POC1", "POC2"],
   Meetings: ["MeetingID", "LeadID", "Purpose", "Notes", "Outcome", "Owner", "GPS", "Date", "Followup", "CreatedAt", "Archived", "Photo", "CustomFields"],
-  Referrals: ["ReferralID", "LeadID", "PatientName", "PatientPhone", "VisitDate", "Reached", "OPD", "IPD", "Investigations", "Medicines", "Consultation", "ReceptionEnquiry", "AdmissionID", "Remarks", "Owner", "CreatedAt", "UpdatedAt", "Archived"],
+  Referrals: ["ReferralID", "LeadID", "PatientName", "PatientPhone", "VisitDate", "Reached", "OPD", "IPD", "Investigations", "Medicines", "Consultation", "ReceptionEnquiry", "AdmissionID", "Remarks", "Owner", "CreatedAt", "UpdatedAt", "Archived", "CustomFields"],
   Config: ["ConfigKey", "ConfigValue"],
   FormFields: ["ID", "Label", "Type", "Mandatory", "Options", "Active", "Target"]
 };
@@ -84,6 +84,23 @@ function initializeSpreadsheet() {
       
       // Seed initial data if sheet is new
       seedInitialData(sheetName, sheet);
+    } else {
+      // Sheet exists, check if any schema headers are missing and auto-append them
+      const lastCol = sheet.getLastColumn();
+      let existingHeaders = [];
+      if (lastCol > 0) {
+        existingHeaders = sheet.getRange(1, 1, 1, lastCol).getValues()[0].map(h => h.toString().trim());
+      }
+      const schemaHeaders = SHEET_SCHEMAS[sheetName];
+      const missingHeaders = schemaHeaders.filter(h => existingHeaders.indexOf(h) === -1);
+      
+      if (missingHeaders.length > 0) {
+        const startCol = lastCol + 1;
+        sheet.getRange(1, startCol, 1, missingHeaders.length)
+             .setValues([missingHeaders])
+             .setFontWeight("bold")
+             .setBackground("#f1f5f9");
+      }
     }
   });
 }
@@ -99,16 +116,27 @@ function readSheetData(sheetName) {
   const lastRow = sheet.getLastRow();
   if (lastRow <= 1) return [];
   
-  const headers = SHEET_SCHEMAS[sheetName];
-  const values = sheet.getRange(2, 1, lastRow - 1, headers.length).getValues();
+  const lastCol = sheet.getLastColumn();
+  if (lastCol < 1) return [];
+  
+  // Read actual columns based on Row 1 in sheet
+  const headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0].map(h => h.toString().trim());
+  const values = sheet.getRange(2, 1, lastRow - 1, lastCol).getValues();
   
   const results = [];
+  const schemaHeaders = SHEET_SCHEMAS[sheetName] || [];
+  
   values.forEach(row => {
-    const idVal = row[0];
-    if (idVal === undefined || idVal === null || idVal === "") return; // Skip empty rows
+    // Determine primary ID column position dynamically
+    const primaryIdHeader = schemaHeaders[0];
+    const idColIdx = headers.indexOf(primaryIdHeader);
+    const idVal = idColIdx !== -1 ? row[idColIdx] : "";
+    
+    if (idVal === undefined || idVal === null || idVal.toString().trim() === "") return; // Skip empty rows
     
     const obj = {};
     headers.forEach((h, idx) => {
+      if (!h) return;
       let val = row[idx];
       // Parse JSON fields
       if ((h === "CustomFields" || h === "Options") && val) {
@@ -158,21 +186,45 @@ function fetchAllTables() {
  */
 function overwriteSheet(sheetName, objects) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const sheet = ss.getSheetByName(sheetName);
-  const headers = SHEET_SCHEMAS[sheetName];
+  let sheet = ss.getSheetByName(sheetName);
+  if (!sheet) {
+    sheet = ss.insertSheet(sheetName);
+  }
+  
+  const schemaHeaders = SHEET_SCHEMAS[sheetName];
+  let lastCol = sheet.getLastColumn();
+  let headers = [];
+  
+  if (lastCol > 0) {
+    headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0].map(h => h.toString().trim());
+  }
+  
+  // Initialize headers if empty
+  if (headers.length === 0 || !headers[0]) {
+    headers = schemaHeaders;
+    sheet.getRange(1, 1, 1, headers.length)
+         .setValues([headers])
+         .setFontWeight("bold")
+         .setBackground("#f1f5f9");
+    lastCol = headers.length;
+  }
   
   // Clear contents below header
   const lastRow = sheet.getLastRow();
   if (lastRow > 1) {
-    sheet.getRange(2, 1, lastRow - 1, headers.length).clearContent();
+    sheet.getRange(2, 1, lastRow - 1, lastCol).clearContent();
   }
   
   if (objects.length === 0) return;
   
   const values = objects.map(obj => {
     return headers.map(h => {
+      if (!h) return "";
       let val = obj[camelCase(h)];
-      if (typeof val === "object" && val !== null) {
+      if (val === undefined || val === null) {
+        val = "";
+      }
+      if (typeof val === "object" && val !== "") {
         val = JSON.stringify(val);
       }
       return val;
@@ -342,6 +394,12 @@ function camelCase(str) {
   if (str === "AdmissionID") return "admissionId";
   if (str === "POC1") return "poc1";
   if (str === "POC2") return "poc2";
+  if (str === "POC1Name") return "poc1Name";
+  if (str === "POC1Phone") return "poc1Phone";
+  if (str === "POC1Specialization") return "poc1Specialization";
+  if (str === "POC2Name") return "poc2Name";
+  if (str === "POC2Phone") return "poc2Phone";
+  if (str === "POC2Specialization") return "poc2Specialization";
   if (str === "GPS") return "gps";
   if (str === "OPD") return "opd";
   if (str === "IPD") return "ipd";
