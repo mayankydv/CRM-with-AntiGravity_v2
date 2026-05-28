@@ -2520,16 +2520,33 @@ function addInlineOption(uniqueId, isStandard, configKeyOrIdx) {
   if (!val) return;
 
   if (isStandard) {
-    const config = db.getConfig();
-    if (!config[configKeyOrIdx]) config[configKeyOrIdx] = [];
-    if (config[configKeyOrIdx].includes(val)) {
-      showToast("Option already exists", "warning");
-      return;
+    if (configKeyOrIdx.startsWith("stdFieldIdx_")) {
+      const idx = parseInt(configKeyOrIdx.replace("stdFieldIdx_", ""));
+      const stdFields = db.getStandardFields();
+      const field = stdFields[idx];
+      if (field) {
+        if (!field.options) field.options = [];
+        if (field.options.includes(val)) {
+          showToast("Option already exists", "warning");
+          return;
+        }
+        field.options.push(val);
+        db.saveStandardFields(stdFields);
+        showToast("Option added to standard field options", "success");
+        applyStandardFieldsConfig();
+      }
+    } else {
+      const config = db.getConfig();
+      if (!config[configKeyOrIdx]) config[configKeyOrIdx] = [];
+      if (config[configKeyOrIdx].includes(val)) {
+        showToast("Option already exists", "warning");
+        return;
+      }
+      config[configKeyOrIdx].push(val);
+      db.saveConfig(config);
+      showToast("Option added to dropdown", "success");
+      db.init(); // Refresh default options across forms
     }
-    config[configKeyOrIdx].push(val);
-    db.saveConfig(config);
-    showToast("Option added to dropdown", "success");
-    db.init(); // Refresh default options across forms
   } else {
     const fields = db.getFormFields();
     const fieldIdx = parseInt(configKeyOrIdx);
@@ -2555,14 +2572,29 @@ function removeInlineOption(uniqueId, isStandard, configKeyOrIdx, optionValue) {
   }
 
   if (isStandard) {
-    const config = db.getConfig();
-    if (config[configKeyOrIdx]) {
-      const idx = config[configKeyOrIdx].indexOf(optionValue);
-      if (idx !== -1) {
-        config[configKeyOrIdx].splice(idx, 1);
-        db.saveConfig(config);
-        showToast("Option removed", "info");
-        db.init();
+    if (configKeyOrIdx.startsWith("stdFieldIdx_")) {
+      const idx = parseInt(configKeyOrIdx.replace("stdFieldIdx_", ""));
+      const stdFields = db.getStandardFields();
+      const field = stdFields[idx];
+      if (field && field.options) {
+        const oIdx = field.options.indexOf(optionValue);
+        if (oIdx !== -1) {
+          field.options.splice(oIdx, 1);
+          db.saveStandardFields(stdFields);
+          showToast("Option removed", "info");
+          applyStandardFieldsConfig();
+        }
+      }
+    } else {
+      const config = db.getConfig();
+      if (config[configKeyOrIdx]) {
+        const idx = config[configKeyOrIdx].indexOf(optionValue);
+        if (idx !== -1) {
+          config[configKeyOrIdx].splice(idx, 1);
+          db.saveConfig(config);
+          showToast("Option removed", "info");
+          db.init();
+        }
       }
     }
   } else {
@@ -2723,10 +2755,62 @@ function editStdField(id) {
   editingStdFieldId = id;
   document.getElementById("editStdFieldId").innerText = id;
   document.getElementById("editStdLabel").value = field.label;
+  
+  // Determine standard field type
+  let typeDisplay = field.type;
+  if (!typeDisplay) {
+    typeDisplay = "text";
+    if (field.id === "leadAudience" || field.id === "leadStatus" || field.id === "meetingPurpose" || field.id === "meetingOutcome" || field.id === "meetingLeadId" || field.id === "referralLeadId") {
+      typeDisplay = "dropdown";
+    } else if (field.id === "leadRevenue") {
+      typeDisplay = "number";
+    } else if (field.id === "leadFollowup" || field.id === "meetingDate" || field.id === "meetingFollowup" || field.id === "refVisitDate") {
+      typeDisplay = "date";
+    } else if (field.id === "meetingNotes" || field.id === "refRemarks") {
+      typeDisplay = "textarea";
+    } else if (field.id === "leadPoc1" || field.id === "leadPoc2") {
+      typeDisplay = "poc block";
+    }
+  }
+  document.getElementById("editStdType").value = typeDisplay;
   document.getElementById("editStdMandatory").checked = field.mandatory;
+  
+  // Disable type changer for critical fields
+  const criticalFields = ["leadOrg", "meetingLeadId", "referralLeadId", "refPatientName"];
+  if (criticalFields.includes(id)) {
+    document.getElementById("editStdType").disabled = true;
+  } else {
+    document.getElementById("editStdType").disabled = false;
+  }
+
+  handleEditStdTypeChange();
+  if (typeDisplay === "dropdown" || typeDisplay === "radio") {
+    // If it's standard dropdown with custom options, or hardcoded options
+    let opts = field.options || [];
+    if (opts.length === 0) {
+      if (id === "leadAudience") opts = db.getConfig().audienceTypes;
+      else if (id === "leadStatus") opts = db.getConfig().leadStatuses;
+      else if (id === "meetingPurpose") opts = db.getConfig().meetingPurposes;
+      else if (id === "meetingOutcome") opts = db.getConfig().meetingOutcomes;
+    }
+    document.getElementById("editStdOptions").value = (opts || []).join(", ");
+  } else {
+    document.getElementById("editStdOptions").value = "";
+  }
   
   document.getElementById("standardFieldEditor").style.display = "block";
   document.getElementById("standardFieldEditor").scrollIntoView({ behavior: 'smooth' });
+}
+
+function handleEditStdTypeChange() {
+  const type = document.getElementById("editStdType").value;
+  const optionsGroup = document.getElementById("editStdOptionsGroup");
+  if (!optionsGroup) return;
+  if (type === "dropdown" || type === "radio") {
+    optionsGroup.style.display = "block";
+  } else {
+    optionsGroup.style.display = "none";
+  }
 }
 
 function toggleStdFieldActive(id) {
@@ -2760,8 +2844,21 @@ function saveStdFieldChange() {
   const stdFields = db.getStandardFields();
   const idx = stdFields.findIndex(f => f.id === editingStdFieldId);
   if (idx !== -1) {
-    stdFields[idx].label = document.getElementById("editStdLabel").value.trim();
-    stdFields[idx].mandatory = document.getElementById("editStdMandatory").checked;
+    const field = stdFields[idx];
+    field.label = document.getElementById("editStdLabel").value.trim();
+    field.mandatory = document.getElementById("editStdMandatory").checked;
+    
+    const criticalFields = ["leadOrg", "meetingLeadId", "referralLeadId", "refPatientName"];
+    if (!criticalFields.includes(editingStdFieldId)) {
+      const newType = document.getElementById("editStdType").value;
+      field.type = newType;
+      if (newType === "dropdown" || newType === "radio") {
+        const rawOptions = document.getElementById("editStdOptions").value;
+        field.options = rawOptions.split(",").map(o => o.trim()).filter(o => o.length > 0);
+      } else {
+        field.options = [];
+      }
+    }
     
     db.saveStandardFields(stdFields);
     showToast("Standard field updated!", "success");
@@ -2967,6 +3064,10 @@ function renderAdminForms() {
         optionsHtml = renderOptionsManagerHTML(`std_${field.id}`, true, "meetingPurposes", db.getConfig().meetingPurposes || [], "Manage Meeting Purpose Options");
       } else if (field.id === "meetingOutcome") {
         optionsHtml = renderOptionsManagerHTML(`std_${field.id}`, true, "meetingOutcomes", db.getConfig().meetingOutcomes || [], "Manage Outcome Status Options");
+      } else if (field.type === "dropdown" || field.type === "radio") {
+        // Render from standard field's own options list (stored inside standard_fields)
+        const idx = stdFields.findIndex(f => f.id === field.id);
+        optionsHtml = renderOptionsManagerHTML(`std_${field.id}`, true, `stdFieldIdx_${idx}`, field.options || [], "Manage Choices / Options");
       }
 
       const item = document.createElement("div");
