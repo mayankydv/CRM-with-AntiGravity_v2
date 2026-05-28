@@ -321,7 +321,6 @@
     <!-- Admin sub-navigation tabs -->
     <div class="admin-tab-bar">
       <div class="admin-tab active" onclick="switchAdminTab('users')">User Management</div>
-      <div class="admin-tab" onclick="switchAdminTab('dropdowns')">Dynamic Dropdowns</div>
       <div class="admin-tab" onclick="switchAdminTab('forms')">Form Fields Settings</div>
       <div class="admin-tab" onclick="switchAdminTab('sharing')">Share Card Settings</div>
       <div class="admin-tab" onclick="switchAdminTab('sync')">Sheets Sync Settings</div>
@@ -359,128 +358,11 @@
       </div>
     </div>
 
-    <!-- Tab 2: Config Dropdowns Settings -->
-    <div id="admin_dropdowns" class="admin-section">
-      <div class="glass" style="padding: 20px; border-radius: var(--radius-md); display: flex; flex-direction: column; gap: 16px;">
-        <div class="form-group">
-          <label class="form-label">Select Dynamic Configuration Dropdown</label>
-          <select id="adminDropdownSelect" class="form-control" onchange="handleDropdownSelectChange()">
-            <option value="audienceTypes">Audience Types (Establishment types)</option>
-            <option value="meetingPurposes">Meeting Purposes (Log purposes)</option>
-            <option value="leadStatuses">Lead Statuses (Pipeline progression steps)</option>
-            <option value="meetingOutcomes">Meeting Outcomes (Outcome logs)</option>
-            <option value="nonConversionReasons">Non-Conversion Reasons (Lost details)</option>
-          </select>
-        </div>
-
-        <div class="form-group">
-          <label class="form-label">Active Dropdown Options</label>
-          <div id="adminDropdownChips" class="options-chips"></div>
-        </div>
-
-        <div class="form-group" style="display:flex; gap:10px; align-items:flex-end;">
-          <div style="flex:1;">
-            <label class="form-label">Add New Value</label>
-            <input type="text" id="adminNewOptionInput" class="form-control" placeholder="E.g. Neurology Clinic">
-          </div>
-          <button type="button" class="btn btn-primary" style="width:100px; height:48px;" onclick="addDropdownOption()">Add</button>
-        </div>
-      </div>
-    </div>
-
-    <!-- Tab 3: Dynamic Forms Settings -->
+    <!-- Tab 3: Dynamic Forms Settings (Unified Form Management) -->
     <div id="admin_forms" class="admin-section">
-      <!-- Standard Fields Admin Section -->
-      <div class="glass" style="padding: 20px; border-radius: var(--radius-md); margin-bottom: 20px;">
-        <h4 style="color: var(--primary); margin-bottom: 12px;">Standard Fields Configuration</h4>
-        
-        <!-- Editor for Standard Field (Hidden by default) -->
-        <div id="standardFieldEditor" style="display: none; background: var(--bg-app); padding: 16px; border-radius: var(--radius-md); margin-bottom: 16px; border: 1px solid var(--card-border);">
-          <h5 style="color: var(--primary); margin-bottom: 8px;">Edit Standard Field: <span id="editStdFieldId" style="color: var(--text-muted); font-weight: bold;"></span></h5>
-          <div class="form-grid" style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-bottom: 12px;">
-            <div class="form-group" style="grid-column: span 2;">
-              <label class="form-label">Field Label (Displayed on Form)</label>
-              <input type="text" id="editStdLabel" class="form-control" required>
-            </div>
-            <div class="form-group" style="grid-column: span 2; display: flex; align-items: center; gap: 8px;">
-              <input type="checkbox" id="editStdMandatory">
-              <label class="form-label" style="margin: 0;">Mandatory (Required Field)</label>
-            </div>
-          </div>
-          <div style="display: flex; gap: 10px;">
-            <button type="button" class="btn btn-primary" onclick="saveStdFieldChange()" style="flex: 1; height: 38px; font-size: 0.85rem;">Save Changes</button>
-            <button type="button" class="btn btn-secondary" onclick="cancelStdFieldEdit()" style="flex: 1; height: 38px; font-size: 0.85rem;">Cancel</button>
-          </div>
-        </div>
-
-        <div class="admin-table-wrapper">
-          <table class="admin-table">
-            <thead>
-              <tr>
-                <th>Field ID</th>
-                <th>Display Label</th>
-                <th>Target Form</th>
-                <th>Mandatory</th>
-                <th>State</th>
-                <th>Action</th>
-              </tr>
-            </thead>
-            <tbody id="adminStdFieldsTableBody"></tbody>
-          </table>
-        </div>
-      </div>
-
-      <form class="glass" style="padding: 20px; border-radius: var(--radius-md); margin-bottom: 20px; display: flex; flex-direction: column; gap: 16px;" onsubmit="addFormField(event)">
-        <h4 style="color: var(--primary);">Add Custom Fields (No-Code Form Creator)</h4>
-        
-        <div class="form-grid" style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px;">
-          <div class="form-group" style="grid-column: span 2;">
-            <label class="form-label">Field Label (Displayed on Forms)</label>
-            <input type="text" id="newFieldLabel" class="form-control" placeholder="E.g. Speciality Focus" required>
-          </div>
-          
-          <div class="form-group">
-            <label class="form-label">Input Data Type</label>
-            <select id="newFieldType" class="form-control" onchange="handleFieldTypeChange()">
-              <option value="text">Single Line Text</option>
-              <option value="number">Numeric Input</option>
-              <option value="dropdown">Dropdown Options</option>
-              <option value="radio">Multiple Choice Options</option>
-              <option value="date">Calendar Date Selector</option>
-              <option value="checkbox">Toggle Checkbox</option>
-              <option value="phone">Phone Number</option>
-              <option value="textarea">Paragraph Text / Remark Box</option>
-              <option value="email">Email</option>
-            </select>
-          </div>
-
-          <div class="form-group">
-            <label class="form-label">Target Form</label>
-            <select id="newFieldTarget" class="form-control">
-              <option value="lead">Referral Lead Form</option>
-              <option value="meeting">Visit Meeting Form</option>
-              <option value="referral">Patient Referral Form</option>
-            </select>
-          </div>
-          
-          <div class="form-group" id="newFieldOptionsGroup" style="display:none; grid-column: span 2;">
-            <label class="form-label">Field Options (Comma-separated options)</label>
-            <input type="text" id="newFieldOptions" class="form-control" placeholder="Cardiology, Neuro, Ortho">
-          </div>
-        </div>
-
-        <div style="display:flex; justify-content:space-between; align-items:center;">
-          <label class="form-checkbox">
-            <input type="checkbox" id="newFieldMandatory">
-            <span>Mandatory (Requires input to submit)</span>
-          </label>
-          <button type="submit" class="btn btn-primary" style="width: 150px; height: 44px;">Create Field</button>
-        </div>
-      </form>
-
-      <!-- Editor for Custom Field (Hidden by default) -->
-      <div id="customFieldEditor" style="display: none; background: var(--bg-app); padding: 16px; border-radius: var(--radius-md); margin-bottom: 16px; border: 1px solid var(--card-border);">
-        <h5 style="color: var(--primary); margin-bottom: 8px;">Edit Custom Field: <span id="editCustFieldId" style="color: var(--text-muted); font-weight: bold;"></span></h5>
+      <!-- Custom Field Editor Dialog (Hidden by default) -->
+      <div id="customFieldEditor" style="display: none; background: var(--bg-app); padding: 16px; border-radius: var(--radius-md); margin-bottom: 20px; border: 1px solid var(--card-border); max-width: 600px; margin-left: auto; margin-right: auto; box-shadow: var(--shadow-md);">
+        <h4 style="color: var(--primary); margin-bottom: 8px;">Edit Custom Field: <span id="editCustFieldId" style="color: var(--text-muted); font-weight: bold;"></span></h4>
         <div class="form-grid" style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-bottom: 12px;">
           <div class="form-group" style="grid-column: span 2;">
             <label class="form-label">Field Label (Displayed on Form)</label>
@@ -501,20 +383,28 @@
         </div>
       </div>
 
-      <div class="admin-table-wrapper">
-        <table class="admin-table">
-          <thead>
-            <tr>
-              <th>Field Display Label</th>
-              <th>Type</th>
-              <th>Target</th>
-              <th>Mandatory</th>
-              <th>State</th>
-              <th>Action</th>
-            </tr>
-          </thead>
-          <tbody id="adminFormsTableBody"></tbody>
-        </table>
+      <!-- Standard Field Editor Dialog (Hidden by default) -->
+      <div id="standardFieldEditor" style="display: none; background: var(--bg-app); padding: 16px; border-radius: var(--radius-md); margin-bottom: 20px; border: 1px solid var(--card-border); max-width: 600px; margin-left: auto; margin-right: auto; box-shadow: var(--shadow-md);">
+        <h4 style="color: var(--primary); margin-bottom: 8px;">Edit Standard Field: <span id="editStdFieldId" style="color: var(--text-muted); font-weight: bold;"></span></h4>
+        <div class="form-grid" style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-bottom: 12px;">
+          <div class="form-group" style="grid-column: span 2;">
+            <label class="form-label">Field Label (Displayed on Form)</label>
+            <input type="text" id="editStdLabel" class="form-control" required>
+          </div>
+          <div class="form-group" style="grid-column: span 2; display: flex; align-items: center; gap: 8px;">
+            <input type="checkbox" id="editStdMandatory">
+            <label class="form-label" style="margin: 0;">Mandatory (Required Field)</label>
+          </div>
+        </div>
+        <div style="display: flex; gap: 10px;">
+          <button type="button" class="btn btn-primary" onclick="saveStdFieldChange()" style="flex: 1; height: 38px; font-size: 0.85rem;">Save Changes</button>
+          <button type="button" class="btn btn-secondary" onclick="cancelStdFieldEdit()" style="flex: 1; height: 38px; font-size: 0.85rem;">Cancel</button>
+        </div>
+      </div>
+
+      <!-- Unified Form Cards Container -->
+      <div id="unifiedFormsContainer" style="display: flex; flex-direction: column; gap: 24px;">
+        <!-- Generated Dynamically by JS -->
       </div>
     </div>
 
