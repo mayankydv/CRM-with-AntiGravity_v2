@@ -2737,18 +2737,107 @@ function applyStandardFieldsConfig() {
       const active = field.active !== false;
       const containerEl = inputEl.closest(".form-group") || inputEl;
       
+      // Determine the desired tag name and type attribute
+      let desiredTag = "input";
+      let desiredType = "text";
+      
+      let typeDisplay = field.type;
+      if (!typeDisplay) {
+        typeDisplay = "text";
+        if (field.id === "leadAudience" || field.id === "leadStatus" || field.id === "meetingPurpose" || field.id === "meetingOutcome" || field.id === "meetingLeadId" || field.id === "referralLeadId") {
+          typeDisplay = "dropdown";
+        } else if (field.id === "leadRevenue") {
+          typeDisplay = "number";
+        } else if (field.id === "leadFollowup" || field.id === "meetingDate" || field.id === "meetingFollowup" || field.id === "refVisitDate") {
+          typeDisplay = "date";
+        } else if (field.id === "meetingNotes" || field.id === "refRemarks") {
+          typeDisplay = "textarea";
+        }
+      }
+
+      if (typeDisplay === "dropdown" || typeDisplay === "radio") {
+        desiredTag = "select";
+      } else if (typeDisplay === "textarea") {
+        desiredTag = "textarea";
+      } else if (typeDisplay === "number") {
+        desiredTag = "input";
+        desiredType = "number";
+      } else if (typeDisplay === "date") {
+        desiredTag = "input";
+        desiredType = "date";
+      } else {
+        desiredTag = "input";
+        desiredType = "text";
+      }
+
+      // Check if tag swapping is needed
+      let currentTag = inputEl.tagName.toLowerCase();
+      let currentType = inputEl.getAttribute("type") ? inputEl.getAttribute("type").toLowerCase() : "";
+      
+      let needSwap = false;
+      if (currentTag !== desiredTag) {
+        needSwap = true;
+      } else if (desiredTag === "input" && currentType !== desiredType) {
+        needSwap = true;
+      }
+
+      let activeInputEl = inputEl;
+      if (needSwap) {
+        const newEl = document.createElement(desiredTag);
+        newEl.id = field.id;
+        newEl.className = inputEl.className;
+        if (desiredTag === "input") {
+          newEl.setAttribute("type", desiredType);
+        }
+        if (inputEl.placeholder) {
+          newEl.placeholder = inputEl.placeholder;
+        }
+        newEl.value = inputEl.value;
+        
+        inputEl.replaceWith(newEl);
+        activeInputEl = newEl;
+      }
+
+      // If it is a dropdown select, populate options
+      if (desiredTag === "select") {
+        activeInputEl.innerHTML = "";
+        
+        let opts = field.options || [];
+        if (opts.length === 0) {
+          if (field.id === "leadAudience") opts = db.getConfig().audienceTypes || [];
+          else if (field.id === "leadStatus") opts = db.getConfig().leadStatuses || [];
+          else if (field.id === "meetingPurpose") opts = db.getConfig().meetingPurposes || [];
+          else if (field.id === "meetingOutcome") opts = db.getConfig().meetingOutcomes || [];
+        }
+
+        // Add a blank option if not mandatory
+        if (!field.mandatory) {
+          const emptyOpt = document.createElement("option");
+          emptyOpt.value = "";
+          emptyOpt.innerText = "-- Select Option --";
+          activeInputEl.appendChild(emptyOpt);
+        }
+
+        opts.forEach(opt => {
+          const optEl = document.createElement("option");
+          optEl.value = opt;
+          optEl.innerText = opt;
+          activeInputEl.appendChild(optEl);
+        });
+      }
+
       if (field.mandatory && active) {
-        if (inputEl.tagName === "INPUT" || inputEl.tagName === "SELECT" || inputEl.tagName === "TEXTAREA") {
-          inputEl.setAttribute("required", "true");
+        if (activeInputEl.tagName === "INPUT" || activeInputEl.tagName === "SELECT" || activeInputEl.tagName === "TEXTAREA") {
+          activeInputEl.setAttribute("required", "true");
         } else {
-          const nameInput = inputEl.querySelector('input[id$="Name"]');
+          const nameInput = activeInputEl.querySelector('input[id$="Name"]');
           if (nameInput) nameInput.setAttribute("required", "true");
         }
       } else {
-        if (inputEl.tagName === "INPUT" || inputEl.tagName === "SELECT" || inputEl.tagName === "TEXTAREA") {
-          inputEl.removeAttribute("required");
+        if (activeInputEl.tagName === "INPUT" || activeInputEl.tagName === "SELECT" || activeInputEl.tagName === "TEXTAREA") {
+          activeInputEl.removeAttribute("required");
         } else {
-          const nameInput = inputEl.querySelector('input[id$="Name"]');
+          const nameInput = activeInputEl.querySelector('input[id$="Name"]');
           if (nameInput) nameInput.removeAttribute("required");
         }
       }
