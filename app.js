@@ -2470,6 +2470,7 @@ function addNewUser(e) {
   document.getElementById("newUserName").value = "";
   document.getElementById("newUserPin").value = "";
   renderAdminUsers();
+  triggerSync(true, true);
 }
 
 function toggleUserStatus(idx) {
@@ -2478,6 +2479,7 @@ function toggleUserStatus(idx) {
   db.saveUsers(users);
   showToast("User status updated!", "info");
   renderAdminUsers();
+  triggerSync(true, true);
 }
 
 function deleteUser(idx) {
@@ -2487,6 +2489,7 @@ function deleteUser(idx) {
     db.saveUsers(users);
     showToast("User deleted", "info");
     renderAdminUsers();
+    triggerSync(true, true);
   }
 }
 
@@ -2564,6 +2567,7 @@ function addInlineOption(uniqueId, isStandard, configKeyOrIdx) {
   }
   inputEl.value = "";
   renderAdminForms();
+  triggerSync(true, true);
 }
 
 function removeInlineOption(uniqueId, isStandard, configKeyOrIdx, optionValue) {
@@ -2611,6 +2615,7 @@ function removeInlineOption(uniqueId, isStandard, configKeyOrIdx, optionValue) {
     }
   }
   renderAdminForms();
+  triggerSync(true, true);
 }
 
 // Inline Custom Field Form Handlers
@@ -2684,6 +2689,7 @@ function handleAddFormFieldInline(e, target) {
 
   // Refresh
   renderAdminForms();
+  triggerSync(true, true);
 }
 
 // 3. Custom & Standard Form Fields Controller
@@ -2830,6 +2836,7 @@ function toggleStdFieldActive(id) {
     showToast(`${stdFields[idx].label} state changed`, "info");
     applyStandardFieldsConfig();
     renderAdminForms();
+    triggerSync(true, true);
   }
 }
 
@@ -2865,6 +2872,7 @@ function saveStdFieldChange() {
     applyStandardFieldsConfig();
     cancelStdFieldEdit();
     renderAdminForms();
+    triggerSync(true, true);
   }
 }
 
@@ -2874,6 +2882,7 @@ function toggleFormFieldActive(idx) {
   db.saveFormFields(fields);
   showToast("Field state changed", "info");
   renderAdminForms();
+  triggerSync(true, true);
 }
 
 function deleteFormField(idx) {
@@ -2883,6 +2892,7 @@ function deleteFormField(idx) {
     db.saveFormFields(fields);
     showToast("Dynamic field deleted", "info");
     renderAdminForms();
+    triggerSync(true, true);
   }
 }
 
@@ -2958,6 +2968,7 @@ function saveCustFieldChange() {
   
   cancelCustFieldEdit();
   renderAdminForms();
+  triggerSync(true, true);
 }
 
 function renderAdminForms() {
@@ -3162,11 +3173,11 @@ function saveSyncUrl() {
 }
 
 function forceSync() {
-  triggerSync();
+  triggerSync(false, true);
 }
 
 // --- GOOGLE APPS SCRIPT SYNC ENGINE ---
-async function triggerSync(isSilent = false) {
+async function triggerSync(isSilent = false, pushConfig = false) {
   const settings = db.getSyncSettings();
   if (!settings.url) {
     if (!isSilent) showToast("Sync URL not configured! Running in local sandbox mode.", "warning");
@@ -3178,16 +3189,19 @@ async function triggerSync(isSilent = false) {
   badge.innerText = "Syncing...";
   if (!isSilent) showToast("Initializing Sheet Sync...", "info");
 
-  // Payload for post: sends entire local state for simplicity & robustness in Apps Script merges
+  // Payload for post: sends data and optionally configurations
   const payload = {
-    users: db.getUsers(),
-    config: db.getConfig(),
-    formFields: db.getFormFields(),
-    standardFields: db.getStandardFields(),
     leads: db.get("leads"), // Include archived elements to trigger server-side archives
     meetings: db.get("meetings"),
     referrals: db.get("referrals")
   };
+
+  if (pushConfig) {
+    payload.users = db.getUsers();
+    payload.config = db.getConfig();
+    payload.formFields = db.getFormFields();
+    payload.standardFields = db.getStandardFields();
+  }
 
   try {
     const response = await fetch(settings.url, {
