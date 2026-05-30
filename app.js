@@ -493,9 +493,25 @@ function navigateToDueFollowups() {
 }
 
 function checkSession() {
-  const storedUser = localStorage.getItem("medtrack_session");
-  if (storedUser) {
-    currentUser = JSON.parse(storedUser);
+  const session = localStorage.getItem("medtrack_session");
+  if (session) {
+    const sessionUser = JSON.parse(session);
+    const users = db.getUsers();
+    const dbUser = users.find(u => u.name === sessionUser.name);
+    
+    // If the user was deleted or deactivated
+    if (!dbUser || !dbUser.active) {
+      localStorage.removeItem("medtrack_session");
+      currentUser = null;
+      showToast("Your session has expired or your account was deactivated.", "warning");
+      window.location.hash = "#/login";
+      return;
+    }
+    
+    currentUser = dbUser; // Sync with fresh database details (PIN or role changes)
+    localStorage.setItem("medtrack_session", JSON.stringify(dbUser));
+    
+    // Update UI headers
     document.getElementById("navBar").style.display = "flex";
     document.getElementById("appHeader").style.display = "flex";
     document.getElementById("currentUserLabel").innerText = `${currentUser.name} (${currentUser.role})`;
