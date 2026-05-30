@@ -125,36 +125,43 @@ class CRMDatabase {
     }
     
     const defaultStdFields = [
-      { id: "leadOrg", label: "Hospital / Clinic Organisation", mandatory: true, target: "lead" },
-      { id: "leadPoc1Name", label: "Primary POC: Doctor Name", mandatory: true, target: "lead" },
-      { id: "leadPoc1Phone", label: "Primary POC: Phone Number", mandatory: true, target: "lead" },
-      { id: "leadPoc1Specialization", label: "Primary POC: Specialization Focus", mandatory: false, target: "lead" },
-      { id: "leadPoc2Name", label: "Secondary POC: Name", mandatory: false, target: "lead" },
-      { id: "leadPoc2Phone", label: "Secondary POC: Phone Number", mandatory: false, target: "lead" },
-      { id: "leadPoc2Specialization", label: "Secondary POC: Specialization / Designation", mandatory: false, target: "lead" },
-      { id: "leadAudience", label: "Audience Type", mandatory: false, target: "lead" },
-      { id: "leadStatus", label: "Referral Status", mandatory: false, target: "lead" },
-      { id: "leadRevenue", label: "Est. Revenue Value (₹)", mandatory: true, target: "lead" },
-      { id: "leadFollowup", label: "Next Action Date", mandatory: false, target: "lead" },
-      { id: "leadGps", label: "Establishment GPS Location", mandatory: false, target: "lead" },
-      { id: "meetingLeadId", label: "Select Hospital Lead", mandatory: true, target: "meeting" },
-      { id: "meetingPurpose", label: "Meeting Purpose", mandatory: false, target: "meeting" },
-      { id: "meetingOutcome", label: "Outcome Status", mandatory: false, target: "meeting" },
-      { id: "meetingNotes", label: "Interaction Summary Notes", mandatory: true, target: "meeting" },
-      { id: "meetingDate", label: "Visit Date", mandatory: true, target: "meeting" },
-      { id: "meetingFollowup", label: "Follow-up Date", mandatory: false, target: "meeting" },
-      { id: "meetingGps", label: "GPS Visit Verification", mandatory: false, target: "meeting" },
-      { id: "meetingPhoto", label: "Log Photo Proof (Visits proof)", mandatory: false, target: "meeting" },
-      { id: "referralLeadId", label: "Select Hospital / Clinic Lead", mandatory: true, target: "referral" },
-      { id: "refPatientName", label: "Patient Full Name", mandatory: true, target: "referral" },
-      { id: "refPatientPhone", label: "Patient Phone Number", mandatory: true, target: "referral" },
-      { id: "refVisitDate", label: "Expected Visit Date", mandatory: true, target: "referral" },
-      { id: "refRemarks", label: "Remark (If Any)", mandatory: false, target: "referral" }
+      { id: "leadOrg", label: "Hospital / Clinic Organisation", mandatory: true, target: "lead", active: true },
+      { id: "leadPoc1Name", label: "Primary POC: Doctor Name", mandatory: true, target: "lead", active: true },
+      { id: "leadPoc1Phone", label: "Primary POC: Phone Number", mandatory: true, target: "lead", active: true },
+      { id: "leadPoc1Specialization", label: "Primary POC: Specialization Focus", mandatory: false, target: "lead", active: true },
+      { id: "leadPoc2Name", label: "Secondary POC: Name", mandatory: false, target: "lead", active: true },
+      { id: "leadPoc2Phone", label: "Secondary POC: Phone Number", mandatory: false, target: "lead", active: true },
+      { id: "leadPoc2Specialization", label: "Secondary POC: Specialization / Designation", mandatory: false, target: "lead", active: true },
+      { id: "leadAudience", label: "Audience Type", mandatory: false, target: "lead", active: true },
+      { id: "leadStatus", label: "Referral Status", mandatory: false, target: "lead", active: true },
+      { id: "leadRevenue", label: "Est. Revenue Value (₹)", mandatory: true, target: "lead", active: true },
+      { id: "leadFollowup", label: "Next Action Date", mandatory: false, target: "lead", active: true },
+      { id: "leadGps", label: "Establishment GPS Location", mandatory: false, target: "lead", active: true },
+      { id: "meetingLeadId", label: "Select Hospital Lead", mandatory: true, target: "meeting", active: true },
+      { id: "meetingPurpose", label: "Meeting Purpose", mandatory: false, target: "meeting", active: true },
+      { id: "meetingOutcome", label: "Outcome Status", mandatory: false, target: "meeting", active: true },
+      { id: "meetingNotes", label: "Interaction Summary Notes", mandatory: true, target: "meeting", active: true },
+      { id: "meetingDate", label: "Visit Date", mandatory: true, target: "meeting", active: true },
+      { id: "meetingFollowup", label: "Follow-up Date", mandatory: false, target: "meeting", active: true },
+      { id: "meetingGps", label: "GPS Visit Verification", mandatory: false, target: "meeting", active: true },
+      { id: "meetingPhoto", label: "Log Photo Proof (Visits proof)", mandatory: false, target: "meeting", active: true },
+      { id: "referralLeadId", label: "Select Hospital / Clinic Lead", mandatory: true, target: "referral", active: true },
+      { id: "refPatientName", label: "Patient Full Name", mandatory: true, target: "referral", active: true },
+      { id: "refPatientPhone", label: "Patient Phone Number", mandatory: true, target: "referral", active: true },
+      { id: "refVisitDate", label: "Expected Visit Date", mandatory: true, target: "referral", active: true },
+      { id: "refRemarks", label: "Remark (If Any)", mandatory: false, target: "referral", active: true }
     ];
 
     if (stdFields.length === 0) {
       localStorage.setItem("medtrack_standard_fields", JSON.stringify(defaultStdFields));
     } else {
+      // Ensure all existing fields are upgraded and have the active flag explicitly defined
+      stdFields.forEach(f => {
+        if (f.active === undefined) {
+          f.active = true;
+          updated = true;
+        }
+      });
       defaultStdFields.forEach(df => {
         if (!stdFields.some(f => f.id === df.id)) {
           stdFields.push(df);
@@ -3174,6 +3181,19 @@ function saveSyncUrl() {
 
 function forceSync() {
   triggerSync(false, true);
+}
+
+function resetFormFieldsConfigToDefault() {
+  if (confirm("Are you sure you want to reset all Form Fields and Settings to factory defaults? This will erase custom fields, custom dropdown options, and restore standard fields. It will sync this reset immediately to Google Sheets.")) {
+    localStorage.removeItem("medtrack_standard_fields");
+    localStorage.removeItem("medtrack_form_fields");
+    localStorage.removeItem("medtrack_config");
+    db.init();
+    applyStandardFieldsConfig();
+    renderAdminForms();
+    triggerSync(false, true);
+    showToast("Configurations reset to defaults and synced!", "success");
+  }
 }
 
 // --- GOOGLE APPS SCRIPT SYNC ENGINE ---
