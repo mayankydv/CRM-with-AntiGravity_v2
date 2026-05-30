@@ -3041,17 +3041,20 @@ function renderAdminForms() {
       const active = field.active !== false;
       const isLinkageCritical = ["leadOrg", "meetingLeadId", "referralLeadId", "refPatientName"].includes(field.id);
       
-      let typeDisplay = "text";
-      if (field.id === "leadAudience" || field.id === "leadStatus" || field.id === "meetingPurpose" || field.id === "meetingOutcome" || field.id === "meetingLeadId" || field.id === "referralLeadId") {
-        typeDisplay = "dropdown";
-      } else if (field.id === "leadRevenue") {
-        typeDisplay = "number";
-      } else if (field.id === "leadFollowup" || field.id === "meetingDate" || field.id === "meetingFollowup" || field.id === "refVisitDate") {
-        typeDisplay = "date";
-      } else if (field.id === "meetingNotes" || field.id === "refRemarks") {
-        typeDisplay = "textarea";
-      } else if (field.id === "leadPoc1" || field.id === "leadPoc2") {
-        typeDisplay = "poc block";
+      let typeDisplay = field.type;
+      if (!typeDisplay) {
+        typeDisplay = "text";
+        if (field.id === "leadAudience" || field.id === "leadStatus" || field.id === "meetingPurpose" || field.id === "meetingOutcome" || field.id === "meetingLeadId" || field.id === "referralLeadId") {
+          typeDisplay = "dropdown";
+        } else if (field.id === "leadRevenue") {
+          typeDisplay = "number";
+        } else if (field.id === "leadFollowup" || field.id === "meetingDate" || field.id === "meetingFollowup" || field.id === "refVisitDate") {
+          typeDisplay = "date";
+        } else if (field.id === "meetingNotes" || field.id === "refRemarks") {
+          typeDisplay = "textarea";
+        } else if (field.id === "leadPoc1" || field.id === "leadPoc2") {
+          typeDisplay = "poc block";
+        }
       }
 
       let optionsHtml = "";
