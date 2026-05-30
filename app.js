@@ -3180,6 +3180,7 @@ async function triggerSync(isSilent = false) {
     users: db.getUsers(),
     config: db.getConfig(),
     formFields: db.getFormFields(),
+    standardFields: db.getStandardFields(),
     leads: db.get("leads"), // Include archived elements to trigger server-side archives
     meetings: db.get("meetings"),
     referrals: db.get("referrals")
@@ -3199,6 +3200,14 @@ async function triggerSync(isSilent = false) {
       if (serverData.users) db.set("users", serverData.users);
       if (serverData.config) db.set("config", serverData.config);
       if (serverData.formFields) db.set("form_fields", serverData.formFields);
+      if (serverData.standardFields && serverData.standardFields.length > 0) {
+        const localStd = db.getStandardFields();
+        const merged = localStd.map(lf => {
+          const sf = serverData.standardFields.find(f => f.id === lf.id);
+          return sf ? { ...lf, ...sf } : lf;
+        });
+        db.saveStandardFields(merged);
+      }
       if (serverData.leads) db.set("leads", serverData.leads);
       if (serverData.meetings) db.set("meetings", serverData.meetings);
       if (serverData.referrals) db.set("referrals", serverData.referrals);
@@ -3267,11 +3276,11 @@ function handleFabItemClick(action) {
 let autoSyncTimerId = null;
 
 function startAutoSyncTimer() {
-  // Sync every 15 minutes (900,000 ms)
-  const SYNC_INTERVAL = 15 * 60 * 1000;
+  // Sync every 30 seconds (30,000 ms)
+  const SYNC_INTERVAL = 30 * 1000;
   
-  // Randomize initial delay slightly (between 30s and 3 mins) so users don't sync at the exact same millisecond
-  const initialDelay = (30 + Math.random() * 150) * 1000;
+  // Randomize initial delay slightly (between 5s and 15s) so users don't sync at the exact same millisecond
+  const initialDelay = (5 + Math.random() * 10) * 1000;
   
   setTimeout(() => {
     attemptAutoSync();
@@ -3282,12 +3291,53 @@ function startAutoSyncTimer() {
   }, initialDelay);
 }
 
+function isUserBusy() {
+  const sheets = ["leadFormSheet", "meetingFormSheet", "leadDetailSheet", "meetingDetailSheet", "referralFormSheet", "referralUpdateSheet"];
+  const hasOpenSheets = sheets.some(id => {
+    const el = document.getElementById(id);
+    return el && el.style.display !== "none" && el.style.display !== "";
+  });
+  if (hasOpenSheets) return true;
+
+  const editors = ["standardFieldEditor", "customFieldEditor"];
+  const hasOpenEditors = editors.some(id => {
+    const el = document.getElementById(id);
+    return el && el.style.display !== "none" && el.style.display !== "";
+  });
+  if (hasOpenEditors) return true;
+
+  const activeEl = document.activeElement;
+  if (activeEl && (activeEl.tagName === "INPUT" || activeEl.tagName === "TEXTAREA" || activeEl.tagName === "SELECT")) {
+    return true;
+  }
+  return false;
+}
+
 function attemptAutoSync() {
-  if (currentUser && navigator.onLine && db.getSyncSettings().url) {
+  if (currentUser && navigator.onLine && db.getSyncSettings().url && !isUserBusy()) {
     console.log("[Auto-Sync] Triggering background synchronization...");
     triggerSync(true);
   }
 }
+
+let focusSyncTimeout = null;
+function triggerFocusSync() {
+  if (currentUser && navigator.onLine && db.getSyncSettings().url && !isUserBusy()) {
+    clearTimeout(focusSyncTimeout);
+    focusSyncTimeout = setTimeout(() => {
+      console.log("[Focus Sync] Triggering background synchronization...");
+      triggerSync(true);
+    }, 1000);
+  }
+}
+
+// Bind focus and visibilitychange events for instant tab-switching sync
+window.addEventListener("focus", triggerFocusSync);
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible") {
+    triggerFocusSync();
+  }
+});
 
 // --- APP RUNTIME INITIALIZATION ---
 window.addEventListener("hashchange", handleRouting);
@@ -3327,21 +3377,7 @@ window.addEventListener("load", () => {
     let refreshing = false;
     let updatePending = false;
 
-    // Helper to check if user is busy with a form input or viewing open details sheets
-    const isUserBusy = () => {
-      const sheets = ["leadFormSheet", "meetingFormSheet", "leadDetailSheet", "meetingDetailSheet", "referralFormSheet", "referralUpdateSheet"];
-      const hasOpenSheets = sheets.some(id => {
-        const el = document.getElementById(id);
-        return el && el.style.display !== "none" && el.style.display !== "";
-      });
-      if (hasOpenSheets) return true;
 
-      const activeEl = document.activeElement;
-      if (activeEl && (activeEl.tagName === "INPUT" || activeEl.tagName === "TEXTAREA" || activeEl.tagName === "SELECT")) {
-        return true;
-      }
-      return false;
-    };
 
     const tryReload = () => {
       if (updatePending && !isUserBusy() && !refreshing) {

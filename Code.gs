@@ -11,7 +11,8 @@ const SHEET_SCHEMAS = {
   Meetings: ["MeetingID", "LeadID", "Purpose", "Notes", "Outcome", "Owner", "GPS", "Date", "Followup", "CreatedAt", "Archived", "Photo", "CustomFields"],
   Referrals: ["ReferralID", "LeadID", "PatientName", "PatientPhone", "VisitDate", "Reached", "OPD", "IPD", "Investigations", "Medicines", "Consultation", "ReceptionEnquiry", "AdmissionID", "Remarks", "Owner", "CreatedAt", "UpdatedAt", "Archived", "CustomFields"],
   Config: ["ConfigKey", "ConfigValue"],
-  FormFields: ["ID", "Label", "Type", "Mandatory", "Options", "Active", "Target"]
+  FormFields: ["ID", "Label", "Type", "Mandatory", "Options", "Active", "Target"],
+  StandardFields: ["ID", "Label", "Mandatory", "Target", "Active", "Type", "Options"]
 };
 
 /**
@@ -46,6 +47,7 @@ function doPost(e) {
     if (payload.users) syncUsers(payload.users);
     if (payload.config) syncConfig(payload.config);
     if (payload.formFields) syncFormFields(payload.formFields);
+    if (payload.standardFields) syncStandardFields(payload.standardFields);
     if (payload.leads) syncLeads(payload.leads);
     if (payload.meetings) syncMeetings(payload.meetings);
     if (payload.referrals) syncReferrals(payload.referrals);
@@ -175,6 +177,7 @@ function fetchAllTables() {
     users: readSheetData("Users"),
     config: Object.keys(config).length > 0 ? config : null,
     formFields: readSheetData("FormFields"),
+    standardFields: readSheetData("StandardFields"),
     leads: readSheetData("Leads"),
     meetings: readSheetData("Meetings"),
     referrals: readSheetData("Referrals")
@@ -319,6 +322,10 @@ function syncUsers(users) {
 
 function syncFormFields(fields) {
   overwriteSheet("FormFields", fields);
+}
+
+function syncStandardFields(fields) {
+  overwriteSheet("StandardFields", fields);
 }
 
 function syncConfig(configObj) {
